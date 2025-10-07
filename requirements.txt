@@ -1,0 +1,14 @@
+streamlit
+xgboost
+joblib
+numpy
+pandas
+tldextract
+python-whois
+python-dateutil
+requests
+beautifulsoup4
+scikit-learn
+matplotlib
+seaborn
+python-dotenv
