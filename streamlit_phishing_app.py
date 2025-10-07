@@ -1,4 +1,3 @@
-# streamlit_phishing_app.py
 import os
 import io
 import json
@@ -31,7 +30,7 @@ import whois
 # 🧩 CONFIGURACIÓN
 # =============================================================
 MODEL_PATH = os.getenv("MODEL_PATH", "models/xgb_phishing_model.pkl")
-FEATURES_PATH = os.getenv("FEATURES_PATH", "models/feature_order.json")  # orden exacto de features
+FEATURES_PATH = os.getenv("FEATURES_PATH", "models/feature_order.json")  # orden exacto de features del modelo
 APP_TITLE = "Detección de Phishing por URL (XGBoost)"
 DESCRIPTION = (
     "Ingresa una URL. Se extraen características, se aplica el modelo XGBoost y se estima la probabilidad de phishing."
@@ -76,7 +75,6 @@ def load_feature_order(features_path: str = FEATURES_PATH) -> List[str]:
         if not isinstance(order, list):
             raise ValueError("El archivo de features debe contener una lista JSON.")
         return order
-    # fallback a nombres del modelo si existen
     try:
         model = load_model()
         if hasattr(model, "feature_names_in_"):
@@ -86,10 +84,10 @@ def load_feature_order(features_path: str = FEATURES_PATH) -> List[str]:
     return []
 
 # =============================================================
-# 🧱 EXTRACCIÓN / ENRIQUECIMIENTO DE FEATURES
+# 🧱 EXTRACCIÓN / ENRIQUECIMIENTO DE FEATURES (tus funciones integradas)
 # =============================================================
 
-# Stub simple por si no tenés a mano tu clasificador de categorías de título
+# Stub simple por si no tenés un clasificador de categorías del título
 def clasificar_categoria(texto: str) -> str:
     texto = (texto or "").lower()
     if any(k in texto for k in ["bank", "banco", "login", "account", "verify", "update"]):
@@ -101,13 +99,13 @@ def clasificar_categoria(texto: str) -> str:
 def procesar_dominio_basico(dominio: str) -> dict:
     """
     Procesa información básica y WHOIS de un dominio, generando las features correspondientes.
-    (tu función, con pequeños guardas)
+    (Tu función, con guardas menores)
     """
     url = f"http://{dominio}"
     parsed = urlparse(url)
     hostname = parsed.hostname or dominio
 
-    # Métricas estáticas de la URL
+    # --- Métricas estáticas de la URL ---
     url_length = len(url)
     num_dashes = dominio.count('-')
     num_digits = sum(c.isdigit() for c in dominio)
@@ -122,14 +120,14 @@ def procesar_dominio_basico(dominio: str) -> dict:
     path_length = len(parsed.path or "")
     query_length = len(parsed.query or "")
 
-    # TLD
+    # --- Extraer TLD ---
     try:
         ext = tldextract.extract(dominio)
         tld = ext.suffix
     except Exception:
         tld = None
 
-    # WHOIS
+    # --- WHOIS ---
     creation_date_iso = None
     expiration_date_iso = None
     registrar = None
@@ -185,10 +183,12 @@ def procesar_dominio_basico(dominio: str) -> dict:
     )
 
     return {
+        # Identificación
         "url": url,
         "tld": tld,
         "is_phishing": None,
 
+        # Estructura URL
         "url_length": url_length,
         "num_dashes": num_dashes,
         "num_digits": num_digits,
@@ -202,6 +202,7 @@ def procesar_dominio_basico(dominio: str) -> dict:
         "path_length": path_length,
         "query_length": query_length,
 
+        # WHOIS y temporalidad
         "registration_time": registration_time,
         "creation_date": creation_date_iso,
         "expiration_date": expiration_date_iso,
@@ -209,13 +210,13 @@ def procesar_dominio_basico(dominio: str) -> dict:
         "time_to_expire_years": time_to_expire_years,
         "registrar": registrar,
         "country_registered": country_registered,
-        "is_registered_in_ar": is_registered_in_ar
+        "is_registered_in_ar": is_registered_in_ar,
     }
 
 def enriquecer_dominio_scraping(dominio: str) -> dict:
     """
     Obtiene datos dinámicos del sitio mediante requests y análisis HTML.
-    (tu función, con pequeños guardas)
+    (Tu función, con guardas menores)
     """
     esquemas = ["https", "http"]
     titulo = ""
@@ -248,27 +249,26 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
             url_redireccionada = getattr(r, 'url', None)
             html_text = getattr(r, 'text', '')
 
-            soup = BeautifulSoup(html_text, "html.parser") if html_text else None
-            if soup:
-                titulo_tag = soup.find("title")
-                if titulo_tag:
-                    titulo = titulo_tag.text.strip()
+            soup = BeautifulSoup(html_text, "html.parser")
+            titulo_tag = soup.find("title")
+            if titulo_tag:
+                titulo = titulo_tag.text.strip()
             if esquema == "https":
                 tiene_https = True
             break
-        except Exception:
+        except requests.exceptions.RequestException:
             continue
 
     soup = BeautifulSoup(html_text, "html.parser") if html_text else None
 
-    # Title y meta keywords
+    # --- Title y meta keywords ---
     longitud_titulo = len(titulo or "")
     if soup:
         meta_tag = soup.find("meta", attrs={"name": "keywords"})
         if meta_tag and "content" in meta_tag.attrs:
             meta_keywords = str(meta_tag["content"]).lower()
 
-    # SSL check
+    # --- SSL check ---
     if tiene_https:
         try:
             hostname = urlparse(url).hostname
@@ -279,7 +279,7 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
         except Exception:
             pass
 
-    # HTML: iframes y forms
+    # --- Analizar HTML para iframes y forms ---
     if soup:
         iframe_present = bool(soup.find("iframe"))
         forms = soup.find_all("form")
@@ -297,7 +297,7 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
                 except Exception:
                     pass
 
-    # Indicadores engañosos
+    # --- Indicadores engañosos ---
     sensitive_words = ["login", "secure", "account", "bank", "verify", "update"]
     sensitive_words_count = sum((titulo or "").lower().count(word) for word in sensitive_words)
     https_in_hostname = "https" in (dominio or "").lower()
@@ -319,7 +319,7 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
         "todopago", "naranja", "ripley", "uala", "plin", "cencosud"
     ]
     marcas_populares = [*bancos, *entidades_publicas, *redes_sociales, *empresas_y_servicios]
-    embedded_brand_name = any(brand in (dominio or "").lower() for brand in marcas_populares)
+    embedded_brand_name = any(brand in (dominio or '').lower() for brand in marcas_populares)
 
     parsed_url = urlparse(url_redireccionada or url or "")
     base_domain = (dominio or "").split(".")[0]
@@ -329,6 +329,7 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
     categoria = clasificar_categoria(titulo or dominio)
 
     return {
+        # Seguridad
         "has_https": tiene_https,
         "has_ssl_cert": tiene_ssl,
         "iframe_present": iframe_present,
@@ -336,16 +337,19 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
         "submit_info_to_email": submit_info_to_email,
         "abnormal_form_action": abnormal_form_action,
 
+        # Respuesta servidor
         "response_time": tiempo_respuesta,
         "responds": responde,
         "http_status_code": codigo_estado,
         "redirected_url": url_redireccionada,
 
+        # Contenido
         "title": titulo,
         "title_length": longitud_titulo,
         "meta_keywords": meta_keywords,
         "category": categoria,
 
+        # Indicadores engañosos
         "random_string": random_string,
         "sensitive_words_count": sensitive_words_count,
         "embedded_brand_name": embedded_brand_name,
@@ -375,19 +379,41 @@ def _to_numeric_features(d: Dict[str, object]) -> Dict[str, float]:
 
 @st.cache_data(show_spinner=False)
 def extract_features(url: str) -> Dict[str, float]:
-    """Usa tus dos funciones y devuelve SOLO numéricas (bool→0/1)."""
+    """Usa tus dos funciones y devuelve SOLO numéricas (bool→0/1) con los nombres esperados por el modelo."""
     if not url:
         return {}
     dominio = _domain_from_url(url)
     base = procesar_dominio_basico(dominio)
     dyn  = enriquecer_dominio_scraping(dominio)
-    merged = {**(base or {}), **(dyn or {})}
-    feats  = _to_numeric_features(merged)
-    # Derivadas
+
+    merged  = {**(base or {}), **(dyn or {})}
+    feats   = _to_numeric_features(merged)
+
+    # Señales derivadas útiles
     if "has_https" in feats and "has_ssl_cert" in feats:
         feats.setdefault("https_no_cert_flag", float(feats["has_https"] == 1.0 and feats["has_ssl_cert"] == 0.0))
     if "response_time" in feats and feats["response_time"] is not None:
         feats.setdefault("slow_response_flag", float(feats["response_time"] > 2.0))
+
+    # Eliminar placeholders antiguos
+    for p in ["host_length", "count_digits", "count_dashes", "count_dots", "has_at", "subdirs"]:
+        feats.pop(p, None)
+
+    # Asegurar claves esperadas (si faltan, quedan en 0.0)
+    expected_like = [
+        # Estructura URL
+        "url_length", "num_dashes", "num_digits", "num_special_chars", "path_segments",
+        "num_dots", "hostname_length", "query_length", "num_underscores", "num_dashes_in_hostname",
+        "double_slash_in_path", "path_length",
+        # Dinámica/HTML/seguridad
+        "title_length", "http_status_code", "has_ssl_cert", "iframe_present", "insecure_forms",
+        "submit_info_to_email", "abnormal_form_action", "has_https", "responds",
+        # (agrego dos señales derivadas comunes; si tu modelo no las usa, no estarán en feature_order.json)
+        "response_time", "https_no_cert_flag"
+    ]
+    for k in expected_like:
+        feats.setdefault(k, 0.0)
+
     return feats
 
 @st.cache_data(show_spinner=False)
@@ -395,7 +421,7 @@ def extract_features_cached(url: str) -> Dict[str, float]:
     return extract_features(url)
 
 def _align_features(row_feat: Dict[str, float], feature_order: List[str]) -> Tuple[np.ndarray, List[str]]:
-    """Alinea al orden del modelo. Faltantes→0."""
+    """Alinea el dict de features al orden esperado por el modelo. Rellena faltantes con 0."""
     if not feature_order:
         cols = list(row_feat.keys())
         x = np.array([[row_feat.get(k, 0.0) for k in cols]], dtype=float)
@@ -418,7 +444,7 @@ def predict_proba_single(url: str, threshold: float) -> Dict[str, float]:
     if hasattr(model, "n_features_in_") and len(used_cols) != int(model.n_features_in_):
         raise ValueError(
             f"Número de features desalineado: modelo espera {getattr(model, 'n_features_in_', '?')} y se recibieron {len(used_cols)}.\n"
-            f"Asegúrate de exportar 'feature_order.json' del entrenamiento o usar 'model.feature_names_in_'"
+            f"Revisa 'feature_order.json' y que 'extract_features' esté generando esos nombres."
         )
 
     if hasattr(model, "predict_proba"):
@@ -468,8 +494,12 @@ with st.sidebar:
     st.caption("Ruta del modelo:")
     st.code(MODEL_PATH)
 
-tab1, tab2 = st.tabs(["Predicción única", "Batch por CSV"])
+# --- Pestañas ---
+tab1, tab2 = st.tabs(["Predicción única", "Batch por CSV"]) 
 
+# --------------------------
+# TAB 1: PREDICCIÓN ÚNICA
+# --------------------------
 with tab1:
     st.subheader("Clasificar una URL")
     url_input = st.text_input(
@@ -500,10 +530,12 @@ with tab1:
                         delta_color="inverse" if label == 0 else "normal",
                     )
 
+                    # Mostrar features extraídos
                     with st.expander("Ver features extraídos"):
                         feats = extract_features_cached(url_norm)
                         st.dataframe(pd.DataFrame([feats]).T.rename(columns={0: "valor"}))
 
+                    # Diferencias vs modelo
                     with st.expander("Ver diferencias de columnas (esperadas vs presentes)"):
                         feats = extract_features_cached(url_norm)
                         expected = load_feature_order()
@@ -520,9 +552,14 @@ with tab1:
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la inferencia: {e}")
 
+# --------------------------
+# TAB 2: BATCH CSV
+# --------------------------
 with tab2:
     st.subheader("Procesar varias URLs por CSV")
-    st.caption("Sube un CSV con una columna llamada **url**. Se calculará la probabilidad para cada fila.")
+    st.caption(
+        "Sube un CSV con una columna llamada **url**. Se calculará la probabilidad para cada fila."
+    )
     file = st.file_uploader("Subir CSV", type=["csv"])
     if file:
         try:
@@ -530,11 +567,14 @@ with tab2:
             if "url" not in df_in.columns:
                 st.error("El CSV debe contener una columna llamada 'url'.")
             else:
-                urls = [_normalize_url(u) for u in df_in["url"].astype(str).tolist() if _looks_like_url(str(u))]
+                urls = [
+                    _normalize_url(u) for u in df_in["url"].astype(str).tolist() if _looks_like_url(str(u))
+                ]
                 with st.spinner("Ejecutando inferencia batch..."):
                     df_out = predict_proba_batch(urls, threshold)
                 st.dataframe(df_out, use_container_width=True)
 
+                # Descargar resultados
                 csv_buf = io.StringIO()
                 df_out.to_csv(csv_buf, index=False)
                 st.download_button(
@@ -546,12 +586,15 @@ with tab2:
         except Exception as e:
             st.error(f"No se pudo leer el CSV: {e}")
 
+# =============================================================
+# 📝 NOTAS
+# =============================================================
 with st.expander("Notas de integración"):
     st.markdown(
         """
-        1. `extract_features(url)` ahora usa tus dos funciones y devuelve **solo numéricas**.
-        2. Exportá el **orden exacto** a `models/feature_order.json` (incluyendo one-hots si tu entrenamiento los generó).
-        3. Faltantes se imputan en 0 durante el alineado; el expander muestra qué falta/sobra.
+        1. `extract_features(url)` ahora usa tus dos funciones y devuelve **solo numéricas** con nombres esperados.
+        2. Exportá a `models/feature_order.json` el **orden exacto** de columnas del entrenamiento (22 en tu caso).
+        3. Las faltantes se imputan a 0 en el alineado; el expander muestra qué falta/sobra para depurar.
         4. Ejecutá: `streamlit run streamlit_phishing_app.py`.
         """
     )
