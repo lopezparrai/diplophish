@@ -1,3 +1,4 @@
+# streamlit_phishing_app.py
 import os
 import io
 import json
@@ -11,12 +12,20 @@ import streamlit as st
 # --- Optional dependencies (handle gracefully if missing) ---
 try:
     import xgboost as xgb
-except Exception as e:
+except Exception:
     xgb = None
 
 from urllib.parse import urlparse
 import re
 import time
+import ssl
+import socket
+import requests
+from bs4 import BeautifulSoup
+from dateutil import parser
+from datetime import datetime
+import tldextract
+import whois
 
 # =============================================================
 # 🧩 CONFIGURACIÓN
@@ -27,13 +36,12 @@ APP_TITLE = "Detección de Phishing por URL (XGBoost)"
 DESCRIPTION = (
     "Ingresa una URL. Se extraen características, se aplica el modelo XGBoost y se estima la probabilidad de phishing."
 )
-DEFAULT_THRESHOLD = 0.50  # puedes priorizar Recall subiendo este umbral o bajándolo según tu métrica objetivo
+DEFAULT_THRESHOLD = 0.50
 SEED = 13
 
 # =============================================================
 # 🧪 UTILIDADES
 # =============================================================
-
 def _looks_like_url(s: str) -> bool:
     if not s:
         return False
@@ -86,35 +94,339 @@ def load_feature_order(features_path: str = FEATURES_PATH) -> List[str]:
 
 
 # =============================================================
-# 🧱 EXTRACCIÓN / ENRIQUECIMIENTO DE FEATURES
+# 🧱 EXTRACCIÓN / ENRIQUECIMIENTO DE FEATURES (tus funciones integradas)
 # =============================================================
-# 🔧 IMPORTANTE: Ignacio, pega aquí tus funciones de enriquecimiento/web scraping
-# y rellena la función `extract_features(url)` para devolver un dict {feature: valor}
+
+# Stub simple por si no tenés a mano la categorización
+def clasificar_categoria(texto: str) -> str:
+    texto = (texto or "").lower()
+    if any(k in texto for k in ["bank", "banco", "login", "account", "verify", "update"]):
+        return "credenciales/pagos"
+    if any(k in texto for k in ["shop", "store", "oferta", "sale", "promo"]):
+        return "ecommerce"
+    return "general"
 
 
+def procesar_dominio_basico(dominio: str) -> dict:
+    """
+    Procesa información básica y WHOIS de un dominio, generando las features correspondientes.
+    """
+
+    url = f"http://{dominio}"
+    parsed = urlparse(url)
+    hostname = parsed.hostname or dominio
+
+    # --- Métricas estáticas de la URL ---
+    url_length = len(url)
+    num_dashes = dominio.count('-')
+    num_digits = sum(c.isdigit() for c in dominio)
+    num_special_chars = len(re.findall(r'[^\w\s:/.-]', dominio))
+    num_dots = dominio.count('.')
+    num_underscores = dominio.count('_')
+    num_dashes_in_hostname = hostname.count('-')
+    double_slash_in_path = '//' in parsed.path if parsed.path else False
+
+    path_segments = len(parsed.path.strip('/').split('/')) if parsed.path else 0
+    hostname_length = len(hostname)
+    path_length = len(parsed.path or "")
+    query_length = len(parsed.query or "")
+
+    # --- Extraer TLD ---
+    try:
+        ext = tldextract.extract(dominio)
+        tld = ext.suffix
+    except Exception:
+        tld = None
+
+    # --- WHOIS ---
+    creation_date_iso = None
+    expiration_date_iso = None
+    registrar = None
+    country_registered = None
+    site_age_years = None
+    time_to_expire_years = None
+    registration_time = None
+
+    try:
+        socket.setdefaulttimeout(5)  # evitar bloqueos WHOIS
+        info_whois = whois.whois(dominio)
+
+        # Normalizar fechas
+        creation = info_whois.creation_date
+        expiration = info_whois.expiration_date
+
+        if isinstance(creation, list):
+            creation = creation[0]
+        if isinstance(expiration, list):
+            expiration = expiration[0]
+
+        # Convertir strings a datetime
+        if isinstance(creation, str):
+            try:
+                creation = parser.parse(creation)
+            except Exception:
+                creation = None
+        if isinstance(expiration, str):
+            try:
+                expiration = parser.parse(expiration)
+            except Exception:
+                expiration = None
+
+        # Guardar en ISO si disponibles
+        creation_date_iso = creation.isoformat() if creation else None
+        expiration_date_iso = expiration.isoformat() if expiration else None
+
+        # Calcular métricas temporales
+        if creation:
+            site_age_years = round((datetime.now() - creation).days / 365, 2)
+        if expiration:
+            time_to_expire_years = round((expiration - datetime.now()).days / 365, 2)
+        if creation and expiration:
+            registration_time = round((expiration - creation).days / 365, 2)
+
+        registrar = getattr(info_whois, 'registrar', None)
+        country_registered = (
+            getattr(info_whois, "country", None)
+            or getattr(info_whois, "registrant_country", None)
+            or "Desconocido"
+        )
+    except Exception:
+        pass
+
+    # --- Flag si está registrado en Argentina ---
+    is_registered_in_ar = bool(
+        country_registered and isinstance(country_registered, str) and "argentina" in country_registered.lower()
+    )
+
+    return {
+        # Identificación
+        "url": url,
+        "tld": tld,
+        "is_phishing": None,  # Placeholder para etiquetado posterior
+
+        # Estructura URL
+        "url_length": url_length,
+        "num_dashes": num_dashes,
+        "num_digits": num_digits,
+        "num_special_chars": num_special_chars,
+        "path_segments": path_segments,
+        "num_dots": num_dots,
+        "num_underscores": num_underscores,
+        "num_dashes_in_hostname": num_dashes_in_hostname,
+        "double_slash_in_path": double_slash_in_path,
+        "hostname_length": hostname_length,
+        "path_length": path_length,
+        "query_length": query_length,
+
+        # WHOIS y temporalidad
+        "registration_time": registration_time,
+        "creation_date": creation_date_iso,
+        "expiration_date": expiration_date_iso,
+        "site_age_years": site_age_years,
+        "time_to_expire_years": time_to_expire_years,
+        "registrar": registrar,
+        "country_registered": country_registered,
+        "is_registered_in_ar": is_registered_in_ar
+    }
+
+
+def enriquecer_dominio_scraping(dominio: str) -> dict:
+    """
+    Obtiene datos dinámicos del sitio mediante requests y análisis HTML.
+    """
+    esquemas = ["https", "http"]
+    titulo = ""
+    tiempo_respuesta = None
+    responde = False
+    codigo_estado = None
+    url_redireccionada = None
+    tiene_https = False
+    tiene_ssl = False
+    meta_keywords = ""
+    iframe_present = False
+    insecure_forms = False
+    submit_info_to_email = False
+    abnormal_form_action = False
+    html_text = ""
+
+    url = None
+    for esquema in esquemas:
+        try:
+            url = f"{esquema}://{dominio}"
+            inicio = time.time()
+            r = requests.get(url, timeout=6, allow_redirects=True, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/117.0 Safari/537.36"
+            })
+            fin = time.time()
+
+            tiempo_respuesta = round(fin - inicio, 3)
+            responde = True
+            codigo_estado = r.status_code
+            url_redireccionada = r.url
+            html_text = r.text
+
+            soup = BeautifulSoup(html_text, "html.parser")
+            titulo_tag = soup.find("title")
+            if titulo_tag:
+                titulo = titulo_tag.text.strip()
+            if esquema == "https":
+                tiene_https = True
+            break
+        except requests.exceptions.RequestException:
+            continue
+
+    soup = BeautifulSoup(html_text, "html.parser") if html_text else None
+
+    # --- Title y meta keywords ---
+    longitud_titulo = len(titulo)
+    if soup:
+        meta_tag = soup.find("meta", attrs={"name": "keywords"})
+        if meta_tag and "content" in meta_tag.attrs:
+            meta_keywords = meta_tag["content"].lower()
+
+    # --- SSL check ---
+    if tiene_https:
+        try:
+            hostname = urlparse(url).hostname
+            context = ssl.create_default_context()
+            with socket.create_connection((hostname, 443), timeout=5) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    tiene_ssl = bool(ssock.getpeercert())
+        except Exception:
+            pass
+
+    # --- Analizar HTML para iframes y forms ---
+    if soup:
+        iframe_present = bool(soup.find("iframe"))
+        forms = soup.find_all("form")
+        for form in forms:
+            action = form.get("action", "").lower()
+            if not action or action.startswith("http://"):
+                insecure_forms = True
+            if "mailto:" in action:
+                submit_info_to_email = True
+            # Acción que apunta a otro dominio
+            if action.startswith("http"):
+                try:
+                    action_host = urlparse(action).hostname
+                    if action_host and not action_host.endswith(dominio):
+                        abnormal_form_action = True
+                except Exception:
+                    pass
+
+    # --- Indicadores engañosos ---
+    sensitive_words = ["login", "secure", "account", "bank", "verify", "update"]
+    sensitive_words_count = sum(titulo.lower().count(word) for word in sensitive_words)
+    https_in_hostname = "https" in dominio
+    random_string = bool(re.search(r"[a-z]{5,}\d{3,}|[0-9]{5,}", dominio))
+
+    bancos = [
+        "santander", "bbva", "galicia", "banco nación", "bna", "hipotecario", "provincia",
+        "macro", "comafi", "brubank", "itau", "supervielle", "patagonia"
+    ]
+    entidades_publicas = [
+        "afip", "anses", "anmat", "ministerio", "gobierno", "municipio", "secretaria", "renaper",
+        "dgr", "dine", "senado", "diputados", "presidencia"
+    ]
+    redes_sociales = [
+        "facebook", "instagram", "twitter", "whatsapp", "tiktok", "linkedin", "telegram", "snapchat"
+    ]
+    empresas_y_servicios = [
+        "mercadolibre", "mercadopago", "despegar", "globant", "tenaris", "ypf", "rappi", "pedidosya",
+        "todopago", "naranja", "ripley", "uala", "plin", "cencosud"
+    ]
+    # Unificar listas y normalizar dominio
+    marcas_populares = bancos + entidades_publicas + redes_sociales + empresas_y_servicios
+    dominio_lower = (dominio or "").lower()
+
+    embedded_brand_name = any(brand.lower() in dominio_lower for brand in marcas_populares)
+
+    domain_in_subdomains = False
+    domain_in_paths = False
+    parsed_url = urlparse(url_redireccionada or url or "")
+    base_domain = (dominio or "").split(".")[0]
+    if parsed_url.hostname and base_domain in parsed_url.hostname and parsed_url.hostname != dominio:
+        domain_in_subdomains = True
+    if base_domain and parsed_url.path and base_domain in parsed_url.path:
+        domain_in_paths = True
+
+    categoria = clasificar_categoria(titulo or dominio)
+
+    return {
+        # Seguridad
+        "has_https": tiene_https,
+        "has_ssl_cert": tiene_ssl,
+        "iframe_present": iframe_present,
+        "insecure_forms": insecure_forms,
+        "submit_info_to_email": submit_info_to_email,
+        "abnormal_form_action": abnormal_form_action,
+
+        # Respuesta servidor
+        "response_time": tiempo_respuesta,
+        "responds": responde,
+        "http_status_code": codigo_estado,
+        "redirected_url": url_redireccionada,
+
+        # Contenido
+        "title": titulo,
+        "title_length": longitud_titulo,
+        "meta_keywords": meta_keywords,
+        "category": categoria,
+
+        # Indicadores engañosos
+        "random_string": random_string,
+        "sensitive_words_count": sensitive_words_count,
+        "embedded_brand_name": embedded_brand_name,
+        "https_in_hostname": https_in_hostname,
+        "domain_in_subdomains": domain_in_subdomains,
+        "domain_in_paths": domain_in_paths
+    }
+
+
+# ---- Helpers para ensamblar vector final ----
+def _domain_from_url(url: str) -> str:
+    p = urlparse(url)
+    host = p.hostname or p.netloc
+    if not host:
+        host = url.replace("http://", "").replace("https://", "").split("/")[0]
+    return host
+
+
+def _to_numeric_features(d: Dict[str, object]) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    for k, v in (d or {}).items():
+        if v is None:
+            continue
+        if isinstance(v, bool):
+            out[k] = 1.0 if v else 0.0
+        elif isinstance(v, (int, float, np.number)):
+            out[k] = float(v)
+        # Strings/categóricas se dejan fuera; si el modelo espera one-hot,
+        # deberán estar en feature_order.json y quedarán en 0 si no aparecen aquí.
+    return out
+
+
+@st.cache_data(show_spinner=False)
 def extract_features(url: str) -> Dict[str, float]:
     """
-    TODO: Reemplazar por tu pipeline real. Debe devolver un dict {feature_name: valor}.
-    Debe ser determinístico y no depender de estado global.
-    Ejemplo simple basado sólo en la cadena URL (placeholder):
+    Pipeline final de features usando tus funciones.
+      - Recibe URL, deriva dominio
+      - Ejecuta procesar_dominio_basico + enriquecer_dominio_scraping
+      - Fusiona y retorna solo variables numéricas (bool→0/1)
     """
-    parsed = urlparse(url)
-    host = parsed.netloc or ""
-    path = parsed.path or ""
-
-    features = {
-        # === Ejemplos básicos, REEMPLAZA por los tuyos ===
-        "url_length": len(url),
-        "host_length": len(host),
-        "path_length": len(path),
-        "count_digits": sum(c.isdigit() for c in url),
-        "count_dashes": url.count("-"),
-        "count_dots": url.count("."),
-        "has_at": int("@" in url),
-        "has_https": int(url.startswith("https://")),
-        "subdirs": path.count("/"),
-    }
-    return features
+    if not url:
+        return {}
+    dominio = _domain_from_url(url)
+    base = procesar_dominio_basico(dominio)
+    dyn = enriquecer_dominio_scraping(dominio)
+    merged: Dict[str, object] = {**(base or {}), **(dyn or {})}
+    numeric = _to_numeric_features(merged)
+    # Señales derivadas útiles
+    if "has_https" in numeric and "has_ssl_cert" in numeric:
+        numeric.setdefault("https_no_cert_flag", float(numeric["has_https"] == 1.0 and numeric["has_ssl_cert"] == 0.0))
+    if "response_time" in numeric and numeric["response_time"] is not None:
+        numeric.setdefault("slow_response_flag", float(numeric["response_time"] > 2.0))
+    return numeric
 
 
 @st.cache_data(show_spinner=False)
@@ -206,7 +518,7 @@ with st.sidebar:
     st.code(MODEL_PATH)
 
 # --- Pestañas ---
-tab1, tab2 = st.tabs(["Predicción única", "Batch por CSV"]) 
+tab1, tab2 = st.tabs(["Predicción única", "Batch por CSV"])
 
 # --------------------------
 # TAB 1: PREDICCIÓN ÚNICA
@@ -245,6 +557,17 @@ with tab1:
                     with st.expander("Ver features extraídos"):
                         feats = extract_features_cached(url_norm)
                         st.dataframe(pd.DataFrame([feats]).T.rename(columns={0: "valor"}))
+
+                    # Diferencias vs modelo (para asegurar 22 columnas)
+                    with st.expander("Ver diferencias de columnas (esperadas vs presentes)"):
+                        feats = extract_features_cached(url_norm)
+                        expected = load_feature_order()
+                        present  = list(feats.keys())
+                        missing  = [c for c in expected if c not in present]
+                        extra    = [c for c in present  if c not in expected]
+                        st.write(f"Features presentes: {len(present)} / Esperadas por el modelo: {len(expected)}")
+                        st.markdown("**Faltan en la URL (se imputan 0):** " + (", ".join(missing) if missing else "—"))
+                        st.markdown("**Sobran (no usadas por el modelo):** " + (", ".join(extra) if extra else "—"))
 
                     # Log ligero
                     st.caption(
@@ -288,16 +611,17 @@ with tab2:
             st.error(f"No se pudo leer el CSV: {e}")
 
 # =============================================================
-# 📝 NOTAS PARA INTEGRACIÓN
+# 📝 NOTAS
 # =============================================================
-with st.expander("Cómo integrar tu pipeline real de features"):
+with st.expander("Notas de integración"):
     st.markdown(
         """
-        1. **Pega tus funciones** de enriquecimiento / web scraping en este archivo y **reemplaza** el contenido de `extract_features(url)` para que devuelva un `dict` `{nombre_feature: valor}`.
-        2. Exporta desde tu entrenamiento el **orden exacto de features** y guárdalo en `models/feature_order.json` (una lista JSON). Alternativamente, si tu modelo tiene `feature_names_in_`, se usará eso.
-        3. Asegúrate de que los **nombres y cantidad** de features coincidan con lo que espera el modelo (se valida antes de inferir).
-        4. Para correr localmente: `streamlit run streamlit_phishing_app.py`.
-        5. Ajusta el **umbral** en la barra lateral para priorizar *Recall* (detección) vs *Precisión* (menos falsos positivos), según tus métricas objetivo (e.g., **PR-AUC** y *Recall* de la clase phishing).
+        1. Tus funciones de enriquecimiento ya están integradas y `extract_features(url)` devuelve un dict **numérico**.
+        2. Exportá desde tu entrenamiento el **orden exacto de features** a `models/feature_order.json` (lista JSON).
+           Si tu modelo tiene `feature_names_in_`, se tomará eso como fallback.
+        3. Si tu entrenamiento incluyó **one-hot** de variables categóricas (e.g., `tld`, `registrar`), incluí esas columnas en `feature_order.json`.
+           Esta app completará en 0 las que no aparezcan en `extract_features`.
+        4. Ejecutá: `streamlit run streamlit_phishing_app.py`.
         """
     )
 
