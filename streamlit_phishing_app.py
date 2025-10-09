@@ -55,8 +55,8 @@ try:
     from features import procesar_dominio_basico, enriquecer_dominio_scraping
 except Exception as e:  # pragma: no cover
     st.warning(
-        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`."
-        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones."
+        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`.\n"
+        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones.\n\n"
         f"Detalle: {e}"
     )
     procesar_dominio_basico = None
@@ -105,23 +105,26 @@ def load_feature_order(path: Path, _model) -> List[str]:
         return [str(c) for c in _model.feature_names_in_]
     return []
 
-# SIN CACHE: evita UnhashableParamError con scaler/model
-# (no es costoso y se evalúa rápido por ejecución)
+# SIN CACHE para evitar UnhashableParamError (rápida de evaluar)
 def get_expected_order(feature_order_json: List[str], _scaler, _model, observed_keys: List[str]) -> List[str]:
-    """Determina el orden definitivo de columnas a usar en producción.
+    """Determina el orden definitivo de columnas.
 
-    Prioridad:
-      1) _scaler.feature_names_in_
-      2) feature_order.json
-      3) _model.feature_names_in_
-      4) observed_keys (orden alfabético)
+    Prioridad **robusta**:
+      1) Columnas del **modelo** (`_model.feature_names_in_`)
+      2) `feature_order.json`
+      3) Columnas del scaler (`_scaler.feature_names_in_`)
+      4) Claves observadas (orden alfabético)
     """
-    if _scaler is not None and hasattr(_scaler, "feature_names_in_"):
-        return [str(c) for c in _scaler.feature_names_in_]
+    if hasattr(_model, "feature_names_in_") and getattr(_model, "feature_names_in_", None) is not None:
+        fins = [str(c) for c in _model.feature_names_in_]
+        if len(fins) > 0:
+            return fins
     if feature_order_json:
         return [str(c) for c in feature_order_json]
-    if hasattr(_model, "feature_names_in_"):
-        return [str(c) for c in _model.feature_names_in_]
+    if _scaler is not None and hasattr(_scaler, "feature_names_in_") and getattr(_scaler, "feature_names_in_", None) is not None:
+        sins = [str(c) for c in _scaler.feature_names_in_]
+        if len(sins) > 0:
+            return sins
     return sorted([str(k) for k in observed_keys])
 
 # ---------------------------------------------------------------
@@ -232,8 +235,20 @@ if analizar:
                     dyn_feats = enriquecer_dominio_scraping(dominio)  # dict
                     feats = {**(base_feats or {}), **(dyn_feats or {})}
 
-                # Determinar el orden definitivo de columnas (prioriza scaler)
+                # ORDEN DEFINITIVO: prioriza MODELO
                 expected_order = get_expected_order(feature_order, scaler, model, list(feats.keys()))
+
+                # Si hay scaler y modelo con names, deshabilitar scaler si no calzan 1:1
+                scaler_in_use = scaler
+                if scaler is not None and hasattr(scaler, "feature_names_in_") and hasattr(model, "feature_names_in_"):
+                    scaler_cols = [str(c) for c in scaler.feature_names_in_]
+                    model_cols = [str(c) for c in model.feature_names_in_]
+                    if scaler_cols != model_cols:
+                        st.warning(
+                            "El scaler y el modelo tienen columnas distintas. "
+                            "Se deshabilita el escalado para evitar mismatch de dimensiones."
+                        )
+                        scaler_in_use = None
 
                 # Mostrar diferencias presentes vs. esperadas
                 render_diffs(feats, expected_order)
@@ -241,20 +256,16 @@ if analizar:
                 # Vector alineado **solo** con las columnas esperadas
                 X = ensure_feature_vector(feats, expected_order)
 
-                # Escalado opcional (si existe scaler externo)
+                # Escalado opcional (si existe scaler externo y es consistente con el modelo)
                 X_in = X
-                if scaler is not None:
-                    # Valida columnas idénticas al scaler
-                    if hasattr(scaler, "feature_names_in_"):
-                        scaler_cols = list(scaler.feature_names_in_)
-                        # Validación fuerte: mismas columnas y mismo orden
-                        missing = [c for c in scaler_cols if c not in X.columns]
-                        if missing:
-                            st.error("Faltan columnas requeridas por el scaler: " + ", ".join(missing))
-                            st.stop()
-                        # Reordenar y descartar extra (ya están descartadas por ensure_feature_vector)
-                        X = X[scaler_cols]
-                    X_in = scaler.transform(X)
+                if scaler_in_use is not None:
+                    scaler_cols = list(scaler_in_use.feature_names_in_)
+                    missing = [c for c in scaler_cols if c not in X.columns]
+                    if missing:
+                        st.error("Faltan columnas requeridas por el scaler: " + ", ".join(missing))
+                        st.stop()
+                    X = X[scaler_cols]
+                    X_in = scaler_in_use.transform(X)
 
                 # Predicción
                 with st.spinner("Prediciendo…"):
@@ -282,16 +293,16 @@ if analizar:
                 # Expander con el vector definitivo y, si aplica, columnas del scaler
                 with st.expander("Ver vector de features alineado"):
                     st.dataframe(X.T.rename(columns={0: "valor"}))
-                    if scaler is not None and hasattr(scaler, "feature_names_in_"):
-                        st.caption("Columnas esperadas por el scaler:")
-                        st.code(", ".join(list(scaler.feature_names_in_)))
+                    if scaler_in_use is not None and hasattr(scaler_in_use, "feature_names_in_"):
+                        st.caption("Columnas esperadas por el scaler (coinciden con el modelo):")
+                        st.code(", ".join(list(scaler_in_use.feature_names_in_)))
 
         except Exception as e:  # pragma: no cover
             st.exception(e)
 
 # Footer sutil
-st.markdown("")
+st.markdown("\n\n")
 st.caption(
-    "Modelo: XGBoost ya entrenado. Front minimalista."
+    "Modelo: XGBoost ya entrenado. Front minimalista. \n"
     "Ajusta MODEL_PATH/FEATURE_ORDER_PATH según tu proyecto y asegúrate de que `features.py` exponga las funciones solicitadas."
 )
