@@ -44,7 +44,7 @@ st.caption("Ingresa una URL o dominio, presiona **Analizar** y obtén la predicc
 # ---------------------------------------------------------------
 MODEL_PATH = Path("models/xgb_phishing.pkl")  # cambia si corresponde
 FEATURE_ORDER_PATH = Path("feature_order.json")  # lista con el orden de columnas usado en entrenamiento
-SCALER_PATH = Path("models/standard_scaler.pkl")  # opcional
+SCALER_PATH = Path("models/standard_scaler.pkl")  # **requerido**: el modelo fue entrenado con escalado
 
 # ---------------------------------------------------------------
 # Import del extractor de features provisto por vos
@@ -54,8 +54,11 @@ try:
     from features import procesar_dominio_basico, enriquecer_dominio_scraping
 except Exception as e:  # pragma: no cover
     st.warning(
-        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`.\n"
-        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones.\n\n"
+        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`.
+"
+        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones.
+
+"
         f"Detalle: {e}"
     )
     procesar_dominio_basico = None
@@ -214,6 +217,11 @@ with st.spinner("Cargando modelo/scaler..."):
     except Exception as e:  # pragma: no cover
         st.error(f"Error cargando el modelo/scaler: {e}")
 
+# Escalado es obligatorio
+if scaler is None:
+    st.error("No se encontró `models/standard_scaler.pkl`. Este deployment **requiere** el scaler entrenado para transformar las variables numéricas.")
+    st.stop()
+
 # ---------------------------------------------------------------
 # UI mínima
 # ---------------------------------------------------------------
@@ -260,17 +268,37 @@ if analizar:
                 # ORDEN DEFINITIVO: prioriza MODELO > JSON > FALLBACK > scaler > observado
                 expected_order = get_expected_order(feature_order, scaler, model, list(feats.keys()))
 
-                # Si hay scaler y modelo con names, deshabilitar scaler si no calzan 1:1
-                scaler_in_use = scaler
-                if scaler is not None and hasattr(scaler, "feature_names_in_") and hasattr(model, "feature_names_in_"):
-                    scaler_cols = [str(c) for c in scaler.feature_names_in_]
-                    model_cols = [str(c) for c in expected_order]
-                    if scaler_cols != model_cols:
-                        st.warning(
-                            "El scaler y el modelo tienen columnas distintas. "
-                            "Se deshabilita el escalado para evitar mismatch de dimensiones."
-                        )
-                        scaler_in_use = None
+                # Validación de consistencia scaler ↔ columnas numéricas
+scaler_in_use = scaler
+
+# Determinar columnas numéricas esperadas en X (según entrenamiento)
+expected_numeric = [c for c in NUMERIC_FEATURES if c in expected_order]
+
+# Chequear que el scaler sea compatible
+if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
+    scaler_cols = [str(c) for c in scaler_in_use.feature_names_in_]
+    if scaler_cols != expected_numeric:
+        # Si el conjunto coincide pero el orden no, intentamos reordenar; si faltan columnas, error
+        missing = [c for c in scaler_cols if c not in expected_numeric]
+        extra = [c for c in expected_numeric if c not in scaler_cols]
+        if missing or extra:
+            st.error(
+                "Incompatibilidad entre el scaler y las variables numéricas de entrenamiento.\n"
+                f"En scaler y no en modelo: {missing}\nEn modelo y no en scaler: {extra}"
+            )
+            st.stop()
+        # Si solo difiere el orden, usaremos el orden del scaler más abajo
+else:
+    # El scaler no expone nombres; validamos por número de features
+    try:
+        n_in = getattr(scaler_in_use, "n_features_in_", None)
+        if n_in is not None and int(n_in) != len(expected_numeric):
+            st.error(
+                f"El scaler espera {n_in} columnas, pero hay {len(expected_numeric)} numéricas definidas."
+            )
+            st.stop()
+    except Exception:
+        pass
 
                 # Mostrar diferencias presentes vs. esperadas
                 render_diffs(feats, expected_order)
@@ -278,32 +306,34 @@ if analizar:
                 # Vector alineado **solo** con las columnas esperadas
                 X = ensure_feature_vector(feats, expected_order)
 
-                # Escalado opcional de **solo** variables numéricas
-                X_in = X.copy()
-                if scaler_in_use is not None:
-                    # Determinar columnas que el scaler espera (si no expone, usar NUMERIC_FEATURES)
-                    if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
-                        scaler_cols = [str(c) for c in scaler_in_use.feature_names_in_]
-                    else:
-                        scaler_cols = [c for c in NUMERIC_FEATURES if c in X.columns]
+                # Escalado **obligatorio** de solo variables numéricas
+X_in = X.copy()
 
-                    missing = [c for c in scaler_cols if c not in X.columns]
-                    if missing:
-                        st.error("Faltan columnas numéricas requeridas por el scaler: " + ", ".join(missing))
-                        st.stop()
+# Determinar columnas a escalar (prioriza nombres del scaler si los tiene)
+if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
+    scaler_cols = [str(c) for c in scaler_in_use.feature_names_in_]
+else:
+    scaler_cols = expected_numeric
 
-                    try:
-                        X_in.loc[:, scaler_cols] = scaler_in_use.transform(X[scaler_cols])
-                    except Exception as se:
-                        st.warning(f"No se pudo aplicar el scaler (se continúa sin escalar): {se}")
-                        X_in = X
+# Validaciones estrictas
+missing = [c for c in scaler_cols if c not in X.columns]
+if missing:
+    st.error("Faltan columnas numéricas requeridas por el scaler: " + ", ".join(missing))
+    st.stop()
 
-                # Predicción
-                with st.spinner("Prediciendo…"):
-                    proba = None
-                    if hasattr(model, "predict_proba"):
-                        proba = model.predict_proba(X_in)  # shape (1, 2)
-                    y_pred = model.predict(X_in)
+# Aplicar transform SOLO sobre esas columnas
+try:
+    X_in.loc[:, scaler_cols] = scaler_in_use.transform(X[scaler_cols])
+except Exception as se:
+    st.error(f"Error aplicando el scaler sobre columnas {scaler_cols}: {se}")
+    st.stop()
+
+# Predicción
+with st.spinner("Prediciendo…"):
+    proba = None
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X_in)  # shape (1, 2)
+    y_pred = model.predict(X_in)
 
                 label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
                 if proba is not None and np.ndim(proba) == 2 and proba.shape[1] >= 2:
@@ -332,7 +362,9 @@ if analizar:
             st.exception(e)
 
 # Footer sutil
-st.markdown("\n\n")
+st.markdown("
+
+")
 st.caption(
     "Modelo: XGBoost ya entrenado. Front minimalista. "
     "Ajusta MODEL_PATH/FEATURE_ORDER_PATH según tu proyecto y asegúrate de que `features.py` exponga las funciones solicitadas."
