@@ -54,11 +54,8 @@ try:
     from features import procesar_dominio_basico, enriquecer_dominio_scraping
 except Exception as e:  # pragma: no cover
     st.warning(
-        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`.
-"
-        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones.
-
-"
+        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`."
+        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones."
         f"Detalle: {e}"
     )
     procesar_dominio_basico = None
@@ -362,9 +359,7 @@ with st.spinner("Prediciendo…"):
             st.exception(e)
 
 # Footer sutil
-st.markdown("
-
-")
+st.markdown("")
 st.caption(
     "Modelo: XGBoost ya entrenado. Front minimalista. "
     "Ajusta MODEL_PATH/FEATURE_ORDER_PATH según tu proyecto y asegúrate de que `features.py` exponga las funciones solicitadas."
