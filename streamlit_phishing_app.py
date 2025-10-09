@@ -105,22 +105,23 @@ def load_feature_order(path: Path, _model) -> List[str]:
         return [str(c) for c in _model.feature_names_in_]
     return []
 
-@st.cache_data(show_spinner=False)
-def get_expected_order(feature_order_json: List[str], scaler, model, observed_keys: List[str]) -> List[str]:
+# SIN CACHE: evita UnhashableParamError con scaler/model
+# (no es costoso y se evalúa rápido por ejecución)
+def get_expected_order(feature_order_json: List[str], _scaler, _model, observed_keys: List[str]) -> List[str]:
     """Determina el orden definitivo de columnas a usar en producción.
 
     Prioridad:
-      1) scaler.feature_names_in_
+      1) _scaler.feature_names_in_
       2) feature_order.json
-      3) model.feature_names_in_
+      3) _model.feature_names_in_
       4) observed_keys (orden alfabético)
     """
-    if scaler is not None and hasattr(scaler, "feature_names_in_"):
-        return [str(c) for c in scaler.feature_names_in_]
+    if _scaler is not None and hasattr(_scaler, "feature_names_in_"):
+        return [str(c) for c in _scaler.feature_names_in_]
     if feature_order_json:
         return [str(c) for c in feature_order_json]
-    if hasattr(model, "feature_names_in_"):
-        return [str(c) for c in model.feature_names_in_]
+    if hasattr(_model, "feature_names_in_"):
+        return [str(c) for c in _model.feature_names_in_]
     return sorted([str(k) for k in observed_keys])
 
 # ---------------------------------------------------------------
