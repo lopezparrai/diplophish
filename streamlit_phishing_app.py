@@ -92,6 +92,25 @@ def load_feature_order(path: Path, _model) -> List[str]:
         return [str(c) for c in model.feature_names_in_]
     # 3) Último recurso: se infiere del primer dict de features (cuando el usuario ejecute)
     return []  # se completará dinámicamente si llega vacío
+    
+# ---------------------------------------------------------------
+# Utilidades: scaler
+# ---------------------------------------------------------------
+
+SCALER_PATH = Path("models/standard_scaler.pkl")
+
+@st.cache_resource(show_spinner=False)
+def load_scaler(path: Path):
+    import joblib
+    if not path.exists():
+        raise FileNotFoundError(f"No se encontró el scaler en: {path}")
+    return joblib.load(path)
+
+scaler = None
+try:
+    scaler = load_scaler(SCALER_PATH)
+except Exception as e:
+    st.warning(f"No se pudo cargar el scaler: {e}")
 
 # ---------------------------------------------------------------
 # Alineación robusta de features: rellena faltantes con 0 y descarta sobrantes
@@ -216,12 +235,17 @@ if analizar:
                 # Vector alineado
                 X = ensure_feature_vector(feats, expected_order)
 
+                if scaler is not None:
+                    X_scaled = scaler.transform(X)
+                else:
+                    X_scaled = X
+
                 # Predicción
                 with st.spinner("Prediciendo…"):
                     proba = None
                     if hasattr(model, "predict_proba"):
-                        proba = model.predict_proba(X)  # shape (1, 2)
-                    y_pred = model.predict(X)
+                        proba = model.predict_proba(X_scaled)  # shape (1, 2)
+                    y_pred = model.predict(X_scaled)
 
                 label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
                 if proba is not None and np.ndim(proba) == 2 and proba.shape[1] >= 2:
