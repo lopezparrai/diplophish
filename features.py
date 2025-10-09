@@ -1,3 +1,15 @@
+import re
+import ssl
+import time
+import socket
+import requests
+import tldextract
+import whois
+from bs4 import BeautifulSoup
+from datetime import datetime
+from dateutil import parser
+from urllib.parse import urlparse
+
 def procesar_dominio_basico(dominio: str) -> dict:
     """
     Procesa información básica y WHOIS de un dominio, generando las features correspondientes.
