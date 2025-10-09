@@ -247,11 +247,8 @@ if analizar:
             st.exception(e)
 
 # Footer sutil
-st.markdown("
-
-")
+st.markdown("")
 st.caption(
-    "Modelo: XGBoost ya entrenado. Front minimalista. 
-"
+    "Modelo: XGBoost ya entrenado. Front minimalista."
     "Ajusta MODEL_PATH/FEATURE_ORDER_PATH según tu proyecto y asegúrate de que `features.py` exponga las funciones solicitadas."
 )
