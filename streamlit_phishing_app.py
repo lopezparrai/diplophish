@@ -5,12 +5,13 @@
 # Tu código de features debe exponer:
 #   - procesar_dominio_basico(dominio: str) -> dict
 #   - enriquecer_dominio_scraping(dominio: str) -> dict
-# (los proveíste arriba). Este script los importa desde features.py
+# (los proveíste). Este script los importa desde features.py
 # 
 # Estructura esperada del proyecto:
 #   - streamlit_phishing_app.py  (este archivo)
 #   - models/xgb_phishing.pkl    (tu modelo ya entrenado: joblib.dump o pickle)
-#   - feature_order.json         (orden de features usado para entrenar)
+#   - models/standard_scaler.pkl (opcional, si guardaste el scaler separado)
+#   - feature_order.json         (orden de features usado para entrenar, opcional)
 #   - features.py                (con tus dos funciones de extracción)
 # 
 # Ejecutar localmente:
@@ -42,8 +43,9 @@ st.caption("Ingresa una URL o dominio, presiona **Analizar** y obtén la predicc
 # ---------------------------------------------------------------
 # Paths (ajústalos si tu estructura difiere)
 # ---------------------------------------------------------------
-MODEL_PATH = Path("models/xgb_phishing_model.pkl")  # cambia si corresponde
+MODEL_PATH = Path("models/xgb_phishing.pkl")  # cambia si corresponde
 FEATURE_ORDER_PATH = Path("feature_order.json")  # lista con el orden de columnas usado en entrenamiento
+SCALER_PATH = Path("models/standard_scaler.pkl")  # opcional
 
 # ---------------------------------------------------------------
 # Import del extractor de features provisto por vos
@@ -61,7 +63,7 @@ except Exception as e:  # pragma: no cover
     enriquecer_dominio_scraping = None
 
 # ---------------------------------------------------------------
-# Utilidades: carga de modelo y orden de features
+# Utilidades: carga de modelo, scaler y orden de features
 # ---------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_model(model_path: Path):
@@ -76,9 +78,21 @@ def load_model(model_path: Path):
             model = pickle.load(f)
     return model
 
+@st.cache_resource(show_spinner=False)
+def load_scaler(path: Path):
+    try:
+        import joblib
+        if not path.exists():
+            return None
+        return joblib.load(path)
+    except Exception:
+        return None
+
 @st.cache_data(show_spinner=False)
 def load_feature_order(path: Path, _model) -> List[str]:
-    # 1) Si existe feature_order.json, úsalo
+    """Carga feature_order.json (si existe) o intenta inferir del modelo.
+    Nota: usamos `_model` (leading underscore) para que Streamlit no intente hashear el objeto.
+    """
     if path.exists():
         try:
             order = json.loads(path.read_text(encoding="utf-8"))
@@ -87,30 +101,27 @@ def load_feature_order(path: Path, _model) -> List[str]:
             return [str(c) for c in order]
         except Exception as e:
             st.warning(f"No se pudo leer feature_order.json: {e}. Se intentará inferir del modelo.")
-    # 2) Si el modelo expone feature_names_in_, úsalo
+    if hasattr(_model, "feature_names_in_"):
+        return [str(c) for c in _model.feature_names_in_]
+    return []
+
+@st.cache_data(show_spinner=False)
+def get_expected_order(feature_order_json: List[str], scaler, model, observed_keys: List[str]) -> List[str]:
+    """Determina el orden definitivo de columnas a usar en producción.
+
+    Prioridad:
+      1) scaler.feature_names_in_
+      2) feature_order.json
+      3) model.feature_names_in_
+      4) observed_keys (orden alfabético)
+    """
+    if scaler is not None and hasattr(scaler, "feature_names_in_"):
+        return [str(c) for c in scaler.feature_names_in_]
+    if feature_order_json:
+        return [str(c) for c in feature_order_json]
     if hasattr(model, "feature_names_in_"):
         return [str(c) for c in model.feature_names_in_]
-    # 3) Último recurso: se infiere del primer dict de features (cuando el usuario ejecute)
-    return []  # se completará dinámicamente si llega vacío
-    
-# ---------------------------------------------------------------
-# Utilidades: scaler
-# ---------------------------------------------------------------
-
-SCALER_PATH = Path("models/standard_scaler.pkl")
-
-@st.cache_resource(show_spinner=False)
-def load_scaler(path: Path):
-    import joblib
-    if not path.exists():
-        raise FileNotFoundError(f"No se encontró el scaler en: {path}")
-    return joblib.load(path)
-
-scaler = None
-try:
-    scaler = load_scaler(SCALER_PATH)
-except Exception as e:
-    st.warning(f"No se pudo cargar el scaler: {e}")
+    return sorted([str(k) for k in observed_keys])
 
 # ---------------------------------------------------------------
 # Alineación robusta de features: rellena faltantes con 0 y descarta sobrantes
@@ -121,16 +132,11 @@ def ensure_feature_vector(feat_map: Dict[str, float], feature_order: List[str]) 
     - Descarta claves extra que el modelo no usa.
     - Convierte booleanos a 0/1 y None a 0.
     """
-    if not feature_order:
-        # Si no tenemos aún el orden, infiérelo del propio dict, ordenado por nombre para determinismo
-        feature_order = sorted(list(feat_map.keys()))
-
     def _cast(v):
         if v is None:
             return 0.0
         if isinstance(v, bool):
             return 1.0 if v else 0.0
-        # strings numéricos → float, strings no numéricos → 0
         if isinstance(v, str):
             try:
                 return float(v)
@@ -161,26 +167,26 @@ def normalize_to_domain(text: str) -> str:
         # Si viene con ruta pero sin esquema, añade http:// para parsear
         text = "http://" + text
     parsed = urlparse(text)
-    host = parsed.netloc or parsed.path  # por si venía como "example.com/test"
-    # Elimina puerto
+    host = parsed.netloc or parsed.path
     host = host.split(":")[0]
-    # Elimina prefijos www.
     if host.startswith("www."):
         host = host[4:]
     return host
 
 # ---------------------------------------------------------------
-# Carga de modelo y orden esperado de features (si es posible)
+# Carga de modelo, scaler y orden esperado de features
 # ---------------------------------------------------------------
 model = None
 feature_order = []
+scaler = None
 
-with st.spinner("Cargando modelo..."):
+with st.spinner("Cargando modelo/scaler..."):
     try:
         model = load_model(MODEL_PATH)
+        scaler = load_scaler(SCALER_PATH)
         feature_order = load_feature_order(FEATURE_ORDER_PATH, model)
     except Exception as e:  # pragma: no cover
-        st.error(f"Error cargando el modelo: {e}")
+        st.error(f"Error cargando el modelo/scaler: {e}")
 
 # ---------------------------------------------------------------
 # UI mínima
@@ -223,29 +229,38 @@ if analizar:
                 with st.spinner("Extrayendo features (WHOIS + scraping)…"):
                     base_feats = procesar_dominio_basico(dominio)  # dict
                     dyn_feats = enriquecer_dominio_scraping(dominio)  # dict
-                    # Merge (dyn sobrescribe en caso de colisión)
                     feats = {**(base_feats or {}), **(dyn_feats or {})}
 
-                # Determinar orden esperado (si no lo teníamos y no hay JSON/feature_names_in_)
-                expected_order = feature_order[:] if feature_order else sorted(list(feats.keys()))
+                # Determinar el orden definitivo de columnas (prioriza scaler)
+                expected_order = get_expected_order(feature_order, scaler, model, list(feats.keys()))
 
                 # Mostrar diferencias presentes vs. esperadas
                 render_diffs(feats, expected_order)
 
-                # Vector alineado
+                # Vector alineado **solo** con las columnas esperadas
                 X = ensure_feature_vector(feats, expected_order)
 
+                # Escalado opcional (si existe scaler externo)
+                X_in = X
                 if scaler is not None:
-                    X_scaled = scaler.transform(X)
-                else:
-                    X_scaled = X
+                    # Valida columnas idénticas al scaler
+                    if hasattr(scaler, "feature_names_in_"):
+                        scaler_cols = list(scaler.feature_names_in_)
+                        # Validación fuerte: mismas columnas y mismo orden
+                        missing = [c for c in scaler_cols if c not in X.columns]
+                        if missing:
+                            st.error("Faltan columnas requeridas por el scaler: " + ", ".join(missing))
+                            st.stop()
+                        # Reordenar y descartar extra (ya están descartadas por ensure_feature_vector)
+                        X = X[scaler_cols]
+                    X_in = scaler.transform(X)
 
                 # Predicción
                 with st.spinner("Prediciendo…"):
                     proba = None
                     if hasattr(model, "predict_proba"):
-                        proba = model.predict_proba(X_scaled)  # shape (1, 2)
-                    y_pred = model.predict(X_scaled)
+                        proba = model.predict_proba(X_in)  # shape (1, 2)
+                    y_pred = model.predict(X_in)
 
                 label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
                 if proba is not None and np.ndim(proba) == 2 and proba.shape[1] >= 2:
@@ -263,9 +278,12 @@ if analizar:
                         f"**No phishing (0)** — probabilidad clase 1: {p_phishing:.3f}"
                     )
 
-                # Opcional: muestra vector de entrada (oculto en un expander)
+                # Expander con el vector definitivo y, si aplica, columnas del scaler
                 with st.expander("Ver vector de features alineado"):
                     st.dataframe(X.T.rename(columns={0: "valor"}))
+                    if scaler is not None and hasattr(scaler, "feature_names_in_"):
+                        st.caption("Columnas esperadas por el scaler:")
+                        st.code(", ".join(list(scaler.feature_names_in_)))
 
         except Exception as e:  # pragma: no cover
             st.exception(e)
