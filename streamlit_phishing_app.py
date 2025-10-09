@@ -43,7 +43,7 @@ st.caption("Ingresa una URL o dominio, presiona **Analizar** y obtén la predicc
 # ---------------------------------------------------------------
 # Paths (ajústalos si tu estructura difiere)
 # ---------------------------------------------------------------
-MODEL_PATH = Path("models/xgb_phishing.pkl")  # cambia si corresponde
+MODEL_PATH = Path("models/xgb_phishing_model.pkl")  # cambia si corresponde
 FEATURE_ORDER_PATH = Path("feature_order.json")  # lista con el orden de columnas usado en entrenamiento
 SCALER_PATH = Path("models/standard_scaler.pkl")  # opcional
 
