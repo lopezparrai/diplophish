@@ -53,11 +53,8 @@ try:
     from features import procesar_dominio_basico, enriquecer_dominio_scraping
 except Exception as e:  # pragma: no cover
     st.warning(
-        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`.
-"
-        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones.
-
-"
+        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`."
+        "Asegúrate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones."
         f"Detalle: {e}"
     )
     procesar_dominio_basico = None
