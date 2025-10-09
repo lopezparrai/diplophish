@@ -266,23 +266,23 @@ if analizar:
                 expected_order = get_expected_order(feature_order, scaler, model, list(feats.keys()))
 
                 # Validación y preparación de columnas numéricas para el scaler (permitiendo columnas extra en scaler)
-scaler_in_use = scaler
+				scaler_in_use = scaler
 
-# Determinar columnas numéricas esperadas en X (respeta el orden del expected_order)
-expected_numeric = [c for c in expected_order if c in NUMERIC_FEATURES]
+				# Determinar columnas numéricas esperadas en X (respeta el orden del expected_order)
+				expected_numeric = [c for c in expected_order if c in NUMERIC_FEATURES]
 
-# Columnas que el scaler conoce (si las expone); si no, asumimos las numéricas esperadas
-if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
-    scaler_cols = [str(c) for c in scaler_in_use.feature_names_in_]
-else:
-    scaler_cols = expected_numeric
+				# Columnas que el scaler conoce (si las expone); si no, asumimos las numéricas esperadas
+				if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
+   					 scaler_cols = [str(c) for c in scaler_in_use.feature_names_in_]
+				else:
+				    scaler_cols = expected_numeric
 
-# Permitimos columnas extra en el scaler que el modelo no usa (p. ej., site_age_years, etc.)
-# Solo aplicaremos la salida del scaler a la intersección con columnas del modelo.
-overlap_cols = [c for c in scaler_cols if c in expected_numeric]
-extra_in_scaler = [c for c in scaler_cols if c not in expected_numeric]
-if extra_in_scaler:
-    st.info("Se omiten en la salida del scaler columnas no usadas por el modelo: " + ", ".join(extra_in_scaler))
+				# Permitimos columnas extra en el scaler que el modelo no usa (p. ej., site_age_years, etc.)
+				# Solo aplicaremos la salida del scaler a la intersección con columnas del modelo.
+				overlap_cols = [c for c in scaler_cols if c in expected_numeric]
+				extra_in_scaler = [c for c in scaler_cols if c not in expected_numeric]
+				if extra_in_scaler:
+  					  st.info("Se omiten en la salida del scaler columnas no usadas por el modelo: " + ", ".join(extra_in_scaler))
 
                 # Mostrar diferencias presentes vs. esperadas
                 render_diffs(feats, expected_order)
@@ -291,31 +291,31 @@ if extra_in_scaler:
                 X = ensure_feature_vector(feats, expected_order)
 
                # Escalado **obligatorio** de solo variables numéricas
-X_in = X.copy()
+				X_in = X.copy()
 
-# Debemos alimentar al scaler con exactamente `scaler_cols` en el orden del scaler.
-# Para columnas que el scaler espera pero el modelo no usa, rellenamos con 0 (no se utilizarán luego).
-scaler_input = pd.DataFrame(columns=scaler_cols)
-for c in scaler_cols:
-    if c in X.columns:
-        scaler_input[c] = X[c].values
-    else:
-        scaler_input[c] = 0.0  # relleno seguro; el modelo no consumirá estas columnas escaladas
+				# Debemos alimentar al scaler con exactamente `scaler_cols` en el orden del scaler.
+				# Para columnas que el scaler espera pero el modelo no usa, rellenamos con 0 (no se utilizarán luego).
+				scaler_input = pd.DataFrame(columns=scaler_cols)
+				for c in scaler_cols:
+ 				   if c in X.columns:
+    				    scaler_input[c] = X[c].values
+ 				   else:
+  				        scaler_input[c] = 0.0  # relleno seguro; el modelo no consumirá estas columnas escaladas
 
-# Aplicar transform
-try:
-    scaled_array = scaler_in_use.transform(scaler_input[scaler_cols])
-except Exception as se:
-    st.error(f"Error aplicando el scaler sobre columnas {scaler_cols}: {se}")
-    st.stop()
-
-# Volcar solo las columnas que el modelo realmente usa (overlap_cols)
-if overlap_cols:
-    # Mapear índices de overlap en el orden de scaler_cols
-    idx_map = [scaler_cols.index(c) for c in overlap_cols]
-    X_in.loc[:, overlap_cols] = scaled_array[:, idx_map]
-else:
-    st.warning("No hay columnas numéricas en común entre el scaler y el modelo; se continúa sin modificaciones en X.")
+				# Aplicar transform
+				try:
+				    scaled_array = scaler_in_use.transform(scaler_input[scaler_cols])
+				except Exception as se:
+				    st.error(f"Error aplicando el scaler sobre columnas {scaler_cols}: {se}")
+				    st.stop()
+				
+				# Volcar solo las columnas que el modelo realmente usa (overlap_cols)
+				if overlap_cols:
+				    # Mapear índices de overlap en el orden de scaler_cols
+				    idx_map = [scaler_cols.index(c) for c in overlap_cols]
+				    X_in.loc[:, overlap_cols] = scaled_array[:, idx_map]
+				else:
+				    st.warning("No hay columnas numéricas en común entre el scaler y el modelo; se continúa sin modificaciones en X.")
 
                 # Predicción
                 with st.spinner("Prediciendo…"):
