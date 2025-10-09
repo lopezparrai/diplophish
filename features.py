@@ -276,3 +276,38 @@ def enriquecer_dominio_scraping(dominio: str) -> dict:
         "domain_in_subdomains": domain_in_subdomains,
         "domain_in_paths": domain_in_paths
     }
+
+def clasificar_categoria(dominio):
+    """
+    Clasifica un dominio web en una categoría temática general según palabras clave presentes.
+
+    Esta función busca términos genéricos en el nombre del dominio para asignarle una categoría
+    temática amplia como "noticias", "gobierno", "banca", "e-commerce" o "educacion". Si no
+    encuentra coincidencias, clasifica el dominio como "otro".
+
+    Args:
+        dominio (str): Nombre de dominio (por ejemplo, "noticiasargentinas.com.ar").
+
+    Returns:
+        str: Categoría general a la que pertenece el dominio. Puede ser:
+            - "noticias"
+            - "gobierno"
+            - "banca"
+            - "e-commerce"
+            - "educacion"
+            - "otro"
+    """
+    dominio = dominio.lower()
+
+    if any(x in dominio for x in ["news", "noticia", "diario", "prensa", "periodico", "press"]):
+        return "noticias"
+    elif any(x in dominio for x in ["gob", "gov", "municipio", "ministerio", "provincia", ".gob.", ".gov."]):
+        return "gobierno"
+    elif any(x in dominio for x in ["banco", "bank", "finance", "finanzas", "credito", "loan", "tarjeta"]):
+        return "banca"
+    elif any(x in dominio for x in ["shop", "store", "tienda", "ecommerce", "comprar", "venta", "oferta"]):
+        return "e-commerce"
+    elif any(x in dominio for x in ["edu", "universidad", "facultad", "campus", "colegio", "escuela", "instituto"]):
+        return "educacion"
+    else:
+        return "otro"
