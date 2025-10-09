@@ -77,7 +77,7 @@ def load_model(model_path: Path):
     return model
 
 @st.cache_data(show_spinner=False)
-def load_feature_order(path: Path, model) -> List[str]:
+def load_feature_order(path: Path, _model) -> List[str]:
     # 1) Si existe feature_order.json, úsalo
     if path.exists():
         try:
