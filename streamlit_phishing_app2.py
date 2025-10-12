@@ -67,28 +67,35 @@ div[data-testid="stProgress"] { display:none !important; }
 
 st.markdown("""
 <style>
+
+st.markdown("""
+<style>
 div.stButton > button:first-child {
-    background: linear-gradient(90deg, #2563eb, #10b981);
-    color: white;
+    background-color: #2563eb;           /* azul base */
+    color: #ffffff;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 1.05rem;
-    font-weight: 600;
-    height: 2.8em;
+    font-weight: 700;
+    height: 2.9em;
     width: 100%;
-    box-shadow: 0 4px 14px rgba(37,99,235,0.3);
+    box-shadow: 0 4px 12px rgba(37,99,235,0.25);
     transition: all 0.2s ease-in-out;
 }
+
 div.stButton > button:first-child:hover {
-    background: #1d4ed8;  /* Azul sólido */
+    background-color: #1d4ed8;           /* azul más oscuro al hover */
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(29,78,216,0.35);
 }
+
 div.stButton > button:first-child:active {
+    background-color: #1e3a8a;           /* azul profundo al click */
     transform: scale(0.98);
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 st.markdown("""
 <style>
