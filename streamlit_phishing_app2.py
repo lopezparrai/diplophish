@@ -249,7 +249,7 @@ def _trigger_submit():
 
 url_input = st.text_input(
     "Pegá la URL a analizar:",
-    placeholder="https://www.ejemplo.com  |  ejemplo.com.ar  |  8.8.8.8",
+    placeholder="https://www.ejemplo.com",
     key="url_input",
     on_change=_trigger_submit
 )
