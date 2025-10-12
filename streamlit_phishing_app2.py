@@ -76,7 +76,7 @@ div.stButton > button:first-child {
     font-weight: 700;
     height: 2.9em;
     width: 100%;
-    box-shadow: 0 4px 12px rgba(37,99,235,0.25);
+    box-shadow: 0 4px 12px rgba(37,99,235,0.20);
     transition: all 0.2s ease-in-out;
 }
 
@@ -90,17 +90,19 @@ div.stButton > button:first-child:active {
     background-color: #1e3a8a;           /* azul profundo al click */
     transform: scale(0.98);
 }
+
+div.stButton > button:first-child:hover {
+    filter: brightness(1.05);
+}
+
 </style>
 """, unsafe_allow_html=True)
-
 
 st.markdown("""
 <style>
 .block-container {
-    padding-top: 2rem;
+    padding-top: 4rem;  /* antes 2rem */
     padding-bottom: 1rem;
-    max-width: 700px;
-    margin: auto;
 }
 </style>
 """, unsafe_allow_html=True)
