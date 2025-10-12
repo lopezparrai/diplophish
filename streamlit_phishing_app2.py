@@ -1,6 +1,7 @@
 # streamlit_phishing_app.py
 # ---------------------------------------------------------------
-# Detector de phishing — versión final pulida y minimalista
+# Detector de phishing — versión pulida y minimalista (final)
+# Requisitos: streamlit, pandas, numpy, plotly, joblib (o pickle)
 # ---------------------------------------------------------------
 
 from __future__ import annotations
@@ -19,13 +20,54 @@ from urllib.parse import urlparse
 # ===================== Configuración de página =====================
 st.set_page_config(page_title="Detector de phishing", page_icon="🛡️", layout="centered")
 
-# ---- Estilo general (oculta sidebar y define estética limpia) ----
+# ===================== Estilos globales ============================
 st.markdown("""
 <style>
+/* Ocultar sidebar y barras de progreso residuales */
 [data-testid="stSidebar"] { display: none !important; }
-.block-container { padding-top: 1.2rem; }
+div[data-testid="stProgress"] { display:none !important; }
 
-/* Resultado grande */
+/* Contenedor centrado y con menos espacio arriba */
+html, body, [data-testid="stAppViewContainer"] { height: 100%; }
+.block-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: .5rem !important;
+    padding-bottom: 1rem !important;
+    max-width: 700px;
+    margin: auto;
+    min-height: 90vh;
+}
+
+/* Botón primario "Analizar" (sólido azul + hover/active) */
+div.stButton > button:first-child,
+form button[kind="primary"] {
+    background-color: #2563eb;  /* base */
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    height: 2.9em;
+    width: 100%;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.20);
+    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, background-color .18s ease;
+}
+div.stButton > button:first-child:hover,
+form button[kind="primary"]:hover {
+    background-color: #1d4ed8;  /* hover */
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(29,78,216,0.30);
+    filter: brightness(1.02);
+}
+div.stButton > button:first-child:active,
+form button[kind="primary"]:active {
+    background-color: #1e3a8a;  /* active */
+    transform: scale(0.99);
+}
+
+/* Banner de resultado */
 .result-banner {
   border-radius: 16px;
   padding: 18px 24px;
@@ -35,98 +77,31 @@ st.markdown("""
   letter-spacing: .5px;
   box-shadow: 0 8px 24px rgba(30, 42, 70, 0.12), 0 2px 6px rgba(30, 42, 70, 0.06);
   margin-top: 12px;
+  animation: fadeIn .6s ease-in-out;
 }
 .result-ok    { background: #e6f7ed; color: #0f5132; border: 1px solid #badbcc; }
 .result-alert { background: #fdecea; color: #842029; border: 1px solid #f5c2c7; }
 
-/* Footer */
-.footer {
-  font-size: 0.8rem;
-  color: #6b7280;
-  text-align: center;
-  margin-top: 24px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-/* Oculta cualquier barra de progreso/residuo tipo slider */
-div[data-testid="stProgress"] { display:none !important; }
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-div.stButton > button:first-child {
-    background-color: #2563eb;           /* azul base */
-    color: #ffffff;
-    border: none;
-    border-radius: 10px;
-    font-size: 1.05rem;
-    font-weight: 700;
-    height: 2.9em;
-    width: 100%;
-    box-shadow: 0 4px 12px rgba(37,99,235,0.20);
-    transition: all 0.2s ease-in-out;
-}
-
-div.stButton > button:first-child:hover {
-    background-color: #1d4ed8;           /* azul más oscuro al hover */
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(29,78,216,0.35);
-}
-
-div.stButton > button:first-child:active {
-    background-color: #1e3a8a;           /* azul profundo al click */
-    transform: scale(0.98);
-}
-
-div.stButton > button:first-child:hover {
-    filter: brightness(1.05);
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-.plot-container {
-    margin-top: 1rem !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-.result-banner {
-    animation: fadeIn 0.6s ease-in-out;
-}
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive: móviles */
+@media (max-width: 640px) {
+  .block-container { max-width: 92vw; padding-top: .25rem !important; }
+  form button[kind="primary"] { height: 3.1em; font-size: 1rem; }
+}
+
+/* Footer sutil */
+.footer {
+  font-size: 0.78rem;
+  color: #9aa3af;
+  text-align: center;
+  margin-top: 1.4rem;
 }
 </style>
 """, unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-html, body, [data-testid="stAppViewContainer"] {
-    height: 100%;
-}
-
-/* Centrado vertical y menos espacio arriba */
-.block-container {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;  /* en vez de center, para que comience más arriba */
-    padding-top: 0.5rem !important;  /* menos espacio superior */
-    padding-bottom: 1rem !important;
-    min-height: 90vh;
-}
-</style>
-""", unsafe_allow_html=True)
-
 
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
@@ -203,9 +178,18 @@ def normalize_to_domain(text: str) -> str:
     host = (parsed.netloc or parsed.path).split(":")[0]
     return host[4:] if host.startswith("www.") else host
 
-# ===================== Tacómetro degradado =====================
-def make_gradient_steps(n: int = 80, vmin: float = 0.0, vmax: float = 100.0):
-    stops = [(0.00, (33,197,93)), (0.50,(250,204,21)), (1.00,(239,68,68))]
+# ===================== Utilidades de features =====================
+def ensure_feature_vector(feat_map: Dict[str, float], feature_order: List[str]) -> pd.DataFrame:
+    def _cast(v):
+        if v is None: return 0.0
+        if isinstance(v, bool): return 1.0 if v else 0.0
+        try: return float(v)
+        except Exception: return 0.0
+    return pd.DataFrame([{k:_cast(feat_map.get(k,0.0)) for k in feature_order}], columns=feature_order)
+
+# ===================== Tacómetro (degradado verde→rojo) =====================
+def make_gradient_steps(n: int = 220, vmin: float = 0.0, vmax: float = 100.0):
+    stops = [(0.00,(33,197,93)), (0.50,(250,204,21)), (1.00,(239,68,68))]  # verde→amarillo→rojo
     def lerp(a,b,t): return a+(b-a)*t
     def interp_color(p: float):
         for (p0,c0),(p1,c1) in zip(stops[:-1],stops[1:]):
@@ -222,50 +206,28 @@ def make_gradient_steps(n: int = 80, vmin: float = 0.0, vmax: float = 100.0):
 
 def render_tacometro(prob: float):
     pct = round(prob * 100, 1)
-
     fig = go.Figure(
         go.Indicator(
             mode="gauge+number",
             value=pct,
-            number={
-                "suffix": "%",
-                "font": {"size": 46, "color": "#101418", "family": "Arial Black"},
-            },
+            number={"suffix":"%", "font":{"size": 46, "color":"#101418", "family":"Arial Black"}},
             gauge={
-                "shape": "angular",
-                "axis": {
-                    "range": [0, 100],
-                    "tickwidth": 0,
-                    "ticks": "",
-                    "tickvals": [0, 20, 40, 60, 80, 100],
-                    "ticktext": ["", "", "", "", "", ""],  # sin etiquetas visibles
-                },
-                "bar": {"color": "rgba(0,0,0,0)", "thickness": 0},
-                "threshold": {
-                    "line": {"color": "#111", "width": 6},
-                    "thickness": 0.9,
-                    "value": pct,
-                },
-                "borderwidth": 0,
-                "bgcolor": "rgba(0,0,0,0)",
+                "shape":"angular",
+                "axis":{"range":[0,100], "tickwidth":0, "ticks":"", "tickvals":[0,20,40,60,80,100],
+                        "ticktext":["","","","","",""]},  # sin etiquetas visibles
+                "bar":{"color":"rgba(0,0,0,0)","thickness":0},  # sin barra-rail
+                "threshold":{"line":{"color":"#111","width":6}, "thickness":0.9, "value":pct},  # “aguja”
+                "borderwidth":0, "bgcolor":"rgba(0,0,0,0)",
                 "steps": make_gradient_steps(n=220, vmin=0, vmax=100),
             },
-            domain={"x": [0, 1], "y": [0, 1]},
+            domain={"x":[0,1], "y":[0,1]},
         )
     )
-
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        height=260,
-        margin=dict(l=0, r=0, t=0, b=0),
-    )
-
-    # 🔹 sin <div class="gauge-card"> — tacómetro ocupa todo el espacio
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=260)
+    fig.layout.margin = go.layout.Margin(l=0, r=0, t=0, b=0)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-
-# ===================== Carga artefactos =====================
+# ===================== Cargar artefactos =====================
 try:
     model = load_model(MODEL_PATH)
     scaler = load_scaler(SCALER_PATH)
@@ -277,18 +239,10 @@ if scaler is None:
     st.error("Falta el archivo del scaler.")
     st.stop()
 
-# ===================== Función auxiliar =====================
-def ensure_feature_vector(feat_map: Dict[str, float], feature_order: List[str]) -> pd.DataFrame:
-    def _cast(v):
-        if v is None: return 0.0
-        if isinstance(v, bool): return 1.0 if v else 0.0
-        try: return float(v)
-        except Exception: return 0.0
-    return pd.DataFrame([{k:_cast(feat_map.get(k,0.0)) for k in feature_order}], columns=feature_order)
-
-# ===================== Interfaz principal =====================
-url_input = st.text_input("Pegá la URL a analizar:", placeholder="https://www.ejemplo.com", help="Incluí el dominio o la URL completa.")
-analizar = st.button("🔍 Analizar", use_container_width=True)
+# ===================== Interfaz: formulario (Enter envía) =======
+with st.form(key="analisis_form", clear_on_submit=False):
+    url_input = st.text_input("Pegá la URL a analizar:", placeholder="https://www.ejemplo.com", help="Incluí el dominio o la URL completa.")
+    analizar = st.form_submit_button("🔍  Analizar", use_container_width=True)
 
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
@@ -296,26 +250,31 @@ def predict_and_show(dominio: str):
         base_feats = procesar_dominio_basico(dominio)
         dyn_feats  = enriquecer_dominio_scraping(dominio)
         feats = {**(base_feats or {}), **(dyn_feats or {})}
-        expected_order = feature_order
-        X = ensure_feature_vector(feats, expected_order)
+
+        X = ensure_feature_vector(feats, feature_order)
+
+        # columnas para scaler
         if hasattr(scaler, "feature_names_in_") and getattr(scaler,"feature_names_in_",None) is not None:
             scaler_cols = [str(c) for c in scaler.feature_names_in_]
         else:
-            scaler_cols = [c for c in expected_order if c in NUMERIC_FEATURES]
+            scaler_cols = [c for c in feature_order if c in NUMERIC_FEATURES]
+
         scaler_input = pd.DataFrame(columns=scaler_cols)
         for c in scaler_cols:
             scaler_input[c] = X[c].values if c in X.columns else 0.0
+
         scaled_array = scaler.transform(scaler_input[scaler_cols])
         overlap_cols = [c for c in scaler_cols if c in X.columns]
         if overlap_cols:
             idx_map = [scaler_cols.index(c) for c in overlap_cols]
             X.loc[:, overlap_cols] = scaled_array[:, idx_map]
-        proba = model.predict_proba(X) if hasattr(model,"predict_proba") else None
-        y_pred = model.predict(X)
-        label = int(y_pred[0]) if hasattr(y_pred,"__iter__") else int(y_pred)
-        p_phishing = float(proba[0,1]) if proba is not None else (1.0 if label==1 else 0.0)
 
-    # === Mostrar resultado ===
+        proba = model.predict_proba(X) if hasattr(model, "predict_proba") else None
+        y_pred = model.predict(X)
+        label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
+        p_phishing = float(proba[0,1]) if (proba is not None and np.ndim(proba)==2 and proba.shape[1]>=2) else (1.0 if label==1 else 0.0)
+
+    # --- Presentación: tacómetro + resultado grande ---
     render_tacometro(p_phishing)
     if label == 1:
         st.markdown('<div class="result-banner result-alert">PHISHING</div>', unsafe_allow_html=True)
@@ -333,10 +292,5 @@ if analizar:
         else:
             predict_and_show(dominio)
 
-# ===================== Footer breve =====================
-st.markdown("""
-<div style='text-align:center; font-size:0.8rem; color:#9ca3af; margin-top:2rem;'>
-DiploDatos 2025 — Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.
-</div>
-""", unsafe_allow_html=True)
-
+# ===================== Footer =====================
+st.markdown("<div class='footer'>DiploDatos 2025 — Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.</div>", unsafe_allow_html=True)
