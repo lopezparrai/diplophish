@@ -142,7 +142,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ===================== Encabezado =====================
-st.markdown("<h1 style='text-align:center;'>🛡️ Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center;'>Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
 
 # ===================== Paths =====================
 MODEL_PATH = Path("models/xgb_phishing.pkl")
