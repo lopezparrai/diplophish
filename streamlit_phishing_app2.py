@@ -1,21 +1,8 @@
 # streamlit_phishing_app.py
 # ---------------------------------------------------------------
 # App para clasificar una URL/Dominio como phishing (1) o no (0)
-# Requisitos: streamlit, joblib (o pickle), xgboost (si tu modelo lo requiere),
-#             pandas, numpy, plotly
-# Tu archivo features.py debe exponer:
-#   - procesar_dominio_basico(dominio: str) -> dict
-#   - enriquecer_dominio_scraping(dominio: str) -> dict
-#
-# Estructura esperada del proyecto:
-#   - streamlit_phishing_app.py  (este archivo)
-#   - models/xgb_phishing.pkl    (tu modelo ya entrenado: joblib.dump o pickle)
-#   - models/standard_scaler.pkl (requerido para este deployment)
-#   - feature_order.json         (orden de features usado para entrenar, opcional)
-#   - features.py                (con tus funciones de extracción)
-#
-# Ejecutar localmente:
-#   streamlit run streamlit_phishing_app.py
+# Front orientado a usuario final: limpio, guiado y sin jerga técnica.
+# Requisitos: streamlit, pandas, numpy, plotly, joblib (o pickle)
 # ---------------------------------------------------------------
 
 from __future__ import annotations
@@ -29,19 +16,15 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
-# Normalización de URLs/dominos
 import re
 from urllib.parse import urlparse
 
-# ---------------------------------------------------------------
-# Configuración básica de la página
-# ---------------------------------------------------------------
-st.set_page_config(page_title="Clasificador de Phishing", page_icon="🛡️", layout="centered")
+# ----------------------- Config de página -----------------------
+st.set_page_config(page_title="Detector de phishing", page_icon="🛡️", layout="centered")
+st.title("🛡️ Detector de sitios sospechosos")
+st.caption("Pegá una URL y te mostramos el **riesgo estimado** de phishing. No guardamos datos.")
 
-st.title("🛡️ Clasificador de URLs: Phishing vs. Legítimo")
-st.caption("Ingresá una URL o dominio, presioná **Analizar** y obtené la predicción del modelo.")
-
-# ==== Estilos de dashboard (card con sombra + degradado) ====
+# ==== Estilo “card” para el tacómetro ====
 st.markdown("""
 <style>
 .gauge-card {
@@ -52,43 +35,28 @@ st.markdown("""
   border: 1px solid rgba(0,0,0,0.05);
 }
 .gauge-title {
-  font-size: 0.95rem;
-  color: #5b6b7f;
-  margin: 0 0 6px 2px;
-  letter-spacing: .3px;
+  font-size: 0.95rem; color: #5b6b7f; margin: 0 0 6px 2px; letter-spacing: .3px;
 }
 .gauge-subtitle {
-  font-size: 0.85rem;
-  color: #7a8a9f;
-  margin: -6px 0 10px 2px;
+  font-size: 0.85rem; color: #7a8a9f; margin: -6px 0 10px 2px;
 }
+.small-muted { color:#6b7280; font-size:.85rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------
-# Paths (ajústalos si tu estructura difiere)
-# ---------------------------------------------------------------
+# ----------------------- Paths de artefactos --------------------
 MODEL_PATH = Path("models/xgb_phishing.pkl")
 FEATURE_ORDER_PATH = Path("feature_order.json")
 SCALER_PATH = Path("models/standard_scaler.pkl")
 
-# ---------------------------------------------------------------
-# Import del extractor de features provisto por vos
-# ---------------------------------------------------------------
+# --------------------- Import de tus features -------------------
 try:
     from features import procesar_dominio_basico, enriquecer_dominio_scraping
-except Exception as e:  # pragma: no cover
-    st.warning(
-        "No se pudo importar `procesar_dominio_basico`/`enriquecer_dominio_scraping` desde `features.py`.\n"
-        "Asegurate de colocar tu archivo `features.py` junto a este script y que exponga esas funciones.\n\n"
-        f"Detalle: {e}"
-    )
-    procesar_dominio_basico = None
-    enriquecer_dominio_scraping = None
+except Exception as e:
+    st.error("No se pudieron cargar las funciones de extracción de features. Revisá `features.py`.")
+    st.stop()
 
-# ---------------------------------------------------------------
-# Definiciones de columnas de entrenamiento y escalado
-# ---------------------------------------------------------------
+# ------------------- Conjuntos de columnas base ----------------
 TRAIN_FEATURES_FALLBACK = [
     'url_length','num_dashes','num_digits','num_special_chars','path_segments','num_dots',
     'hostname_length','path_length','query_length','num_underscores','num_dashes_in_hostname',
@@ -103,180 +71,117 @@ NUMERIC_FEATURES = [
     'sensitive_words_count'
 ]
 
-# ---------------------------------------------------------------
-# Utilidades: carga de modelo, scaler y orden de features
-# ---------------------------------------------------------------
+# --------------------- Carga de modelo/scaler -------------------
 @st.cache_resource(show_spinner=False)
 def load_model(model_path: Path):
     if not model_path.exists():
-        raise FileNotFoundError(f"No se encontró el modelo en: {model_path}")
+        raise FileNotFoundError(f"No se encontró el modelo en {model_path}")
     try:
         import joblib
-        model = joblib.load(model_path)
+        return joblib.load(model_path)
     except Exception:
         with open(model_path, "rb") as f:
-            model = pickle.load(f)
-    return model
+            return pickle.load(f)
 
 @st.cache_resource(show_spinner=False)
 def load_scaler(path: Path):
     try:
         import joblib
-        if not path.exists():
-            return None
-        return joblib.load(path)
+        if path.exists():
+            return joblib.load(path)
     except Exception:
-        return None
+        pass
+    return None
 
 @st.cache_data(show_spinner=False)
 def load_feature_order(path: Path, _model) -> List[str]:
     if path.exists():
         try:
             order = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(order, list):
-                raise ValueError("feature_order.json debe contener una lista de strings")
-            return [str(c) for c in order]
-        except Exception as e:
-            st.warning(f"No se pudo leer feature_order.json: {e}. Se intentará inferir del modelo.")
-    if hasattr(_model, "feature_names_in_"):
+            if isinstance(order, list): return [str(c) for c in order]
+        except Exception:
+            pass
+    if hasattr(_model, "feature_names_in_") and getattr(_model, "feature_names_in_", None) is not None:
         return [str(c) for c in _model.feature_names_in_]
-    return []
+    return list(TRAIN_FEATURES_FALLBACK)
 
 def get_expected_order(feature_order_json: List[str], _scaler, _model, observed_keys: List[str]) -> List[str]:
     if hasattr(_model, "feature_names_in_") and getattr(_model, "feature_names_in_", None) is not None:
         fins = [str(c) for c in _model.feature_names_in_]
-        if len(fins) > 0:
-            return fins
-    if feature_order_json:
-        return [str(c) for c in feature_order_json]
-    if TRAIN_FEATURES_FALLBACK:
-        return list(TRAIN_FEATURES_FALLBACK)
+        if fins: return fins
+    if feature_order_json: return [str(c) for c in feature_order_json]
+    if TRAIN_FEATURES_FALLBACK: return list(TRAIN_FEATURES_FALLBACK)
     if _scaler is not None and hasattr(_scaler, "feature_names_in_") and getattr(_scaler, "feature_names_in_", None) is not None:
         sins = [str(c) for c in _scaler.feature_names_in_]
-        if len(sins) > 0:
-            return sins
+        if sins: return sins
     return sorted([str(k) for k in observed_keys])
 
-# ---------------------------------------------------------------
-# Alineación robusta de features: rellena faltantes con 0 y descarta sobrantes
-# ---------------------------------------------------------------
+# ------------------ Alineación robusta de vector ----------------
 def ensure_feature_vector(feat_map: Dict[str, float], feature_order: List[str]) -> pd.DataFrame:
     def _cast(v):
-        if v is None:
-            return 0.0
-        if isinstance(v, bool):
-            return 1.0 if v else 0.0
+        if v is None: return 0.0
+        if isinstance(v, bool): return 1.0 if v else 0.0
         if isinstance(v, (int, float, np.number)):
-            try:
-                return float(v)
-            except Exception:
-                return 0.0
+            try: return float(v)
+            except Exception: return 0.0
         if isinstance(v, str):
-            try:
-                return float(v)
-            except Exception:
-                return 0.0
-        try:
-            return float(v)
-        except Exception:
-            return 0.0
-
+            try: return float(v)
+            except Exception: return 0.0
+        try: return float(v)
+        except Exception: return 0.0
     row = {k: _cast(feat_map.get(k, 0.0)) for k in feature_order}
     return pd.DataFrame([row], columns=feature_order)
 
-# ---------------------------------------------------------------
-# Normalización de entrada: aceptar URL completa o dominio suelto
-# ---------------------------------------------------------------
+# ------------------- Normalización de entrada -------------------
 DOMAIN_REGEX = re.compile(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
-
 def normalize_to_domain(text: str) -> str:
     text = text.strip()
-    if not text:
-        return ""
+    if not text: return ""
     if not text.startswith(("http://", "https://")):
-        if DOMAIN_REGEX.match(text):
-            return text
+        if DOMAIN_REGEX.match(text): return text
         text = "http://" + text
     parsed = urlparse(text)
-    host = parsed.netloc or parsed.path
-    host = host.split(":")[0]
-    if host.startswith("www."):
-        host = host[4:]
-    return host
+    host = (parsed.netloc or parsed.path).split(":")[0]
+    return host[4:] if host.startswith("www.") else host
 
-# ---------------------------------------------------------------
-# UI: entrada
-# ---------------------------------------------------------------
-entrada = st.text_input("URL o dominio a analizar", placeholder="https://ejemplo.com/…")
-analizar = st.button("Analizar", type="primary", use_container_width=True)
+# ----------------- Sidebar: ayuda + modo avanzado ----------------
+with st.sidebar:
+    st.header("¿Cómo usar?")
+    st.markdown("1) Pegá la **URL completa** (ideal con `https://`).\n2) Tocá **Analizar**.\n3) Leé el nivel de riesgo.")
+    DEV_MODE = st.toggle("Modo avanzado (técnico)", value=False)
+    st.divider()
+    st.subheader("Ejemplos")
+    for e in ["https://www.afip.gob.ar/", "http://secure-login-afip.xyz/update", "https://www.bna.com.ar/"]:
+        st.code(e, language="text")
+    st.caption("Tip: ante dudas, escribí la dirección manualmente en el navegador.")
 
-# ---------------------------------------------------------------
-# Carga de modelo, scaler y orden esperado de features
-# ---------------------------------------------------------------
-model = None
-feature_order = []
-scaler = None
+# ----------------- Entrada principal (usuario) ------------------
+url_input = st.text_input("Pegá la URL a analizar", placeholder="https://www.ejemplo.com")
+analizar = st.button("🔍 Analizar", use_container_width=True)
 
-with st.spinner("Cargando modelo/scaler..."):
-    try:
-        model = load_model(MODEL_PATH)
-        scaler = load_scaler(SCALER_PATH)
-        feature_order = load_feature_order(FEATURE_ORDER_PATH, model)
-    except Exception as e:  # pragma: no cover
-        st.error(f"Error cargando el modelo/scaler: {e}")
-
-if scaler is None:
-    st.error("No se encontró `models/standard_scaler.pkl`. Este deployment **requiere** el scaler entrenado para transformar las variables numéricas.")
+# ----------------- Carga de artefactos (silenciosa) -------------
+try:
+    model = load_model(MODEL_PATH)
+    scaler = load_scaler(SCALER_PATH)
+    feature_order = load_feature_order(FEATURE_ORDER_PATH, model)
+except Exception as e:
+    st.error("No pudimos cargar el modelo. Volvé a intentar más tarde.")
+    if DEV_MODE: st.exception(e)
     st.stop()
 
-# ---------------------------------------------------------------
-# Visuales: difs de features y tacómetro (dashboard)
-# ---------------------------------------------------------------
-def render_diffs(calculadas: Dict[str, float], esperadas: List[str]):
-    calculadas_cols = set(calculadas.keys())
-    esperadas_cols = set(esperadas)
-    faltantes = list(esperadas_cols - calculadas_cols)
-    sobrantes = list(calculadas_cols - esperadas_cols)
+if scaler is None:
+    st.error("Falta el archivo de escalado. Contactá al administrador.")
+    st.stop()
 
-    st.caption(
-        f"**Features presentes (merge de básicas+scraping):** {len(calculadas_cols)}  |  **Esperadas por el modelo:** {len(esperadas)}"
-    )
-    if faltantes:
-        with st.expander("Ver features faltantes (se imputan 0)"):
-            st.write(", ".join(sorted(faltantes)))
-    if sobrantes:
-        with st.expander("Ver features sobrantes (no usadas por el modelo)"):
-            st.write(", ".join(sorted(sobrantes)))
-
-def riesgo_bucket(p: float):
-    """Etiqueta y recomendación según prob. de phishing."""
-    if p < 0.20:
-        return "Bajo", "Parece legítimo, pero mantené precaución."
-    elif p < 0.50:
-        return "Medio", "Verificá la URL y el remitente antes de interactuar."
-    elif p < 0.80:
-        return "Alto", "Evitá ingresar datos y comprobá por canales oficiales."
-    else:
-        return "Muy alto", "No hagas clic ni ingreses credenciales; reportalo."
-
-# --- Helper: genera pasos de color con degradado suave verde→amarillo→rojo
+# ----------------- Tacómetro con degradado ----------------------
 def make_gradient_steps(n: int = 80, vmin: float = 0.0, vmax: float = 100.0):
-    """
-    Devuelve una lista de steps para el gauge de Plotly, usando un degradado
-    continuo de verde (#21c55d) → amarillo (#facc15) → rojo (#ef4444).
-    """
-    # Stops en espacio RGB
     stops = [
-        (0.00, (33, 197, 93)),   # #21c55d  verde
-        (0.50, (250, 204, 21)),  # #facc15  amarillo
-        (1.00, (239, 68, 68)),   # #ef4444  rojo
+        (0.00, (33, 197, 93)),   # #21c55d
+        (0.50, (250, 204, 21)),  # #facc15
+        (1.00, (239, 68, 68)),   # #ef4444
     ]
-
-    def lerp(a, b, t):  # interpolación lineal
-        return a + (b - a) * t
-
+    def lerp(a, b, t): return a + (b - a) * t
     def interp_color(p: float):
-        # p en [0,1]
         for (p0, c0), (p1, c1) in zip(stops[:-1], stops[1:]):
             if p <= p1:
                 t = (p - p0) / (p1 - p0)
@@ -286,192 +191,132 @@ def make_gradient_steps(n: int = 80, vmin: float = 0.0, vmax: float = 100.0):
                 return f"rgb({r},{g},{b})"
         r, g, b = stops[-1][1]
         return f"rgb({r},{g},{b})"
-
     steps = []
     span = vmax - vmin
     for i in range(n):
         a = vmin + (i * span) / n
         b = vmin + ((i + 1) * span) / n
-        p_mid = (i + 0.5) / n  # punto medio del tramo
-        steps.append({"range": [a, b], "color": interp_color(p_mid)})
+        steps.append({"range": [a, b], "color": interp_color((i + 0.5) / n)})
     return steps
 
-
 def render_tacometro_dashboard(prob: float, title: str = "Phishing Risk"):
-    """
-    Tacómetro semicircular estilo dashboard con degradado suave verde→rojo.
-    Usa 'threshold' como aguja y oculta la barra para un look similar al velocímetro.
-    """
-    import plotly.graph_objects as go
-
     pct = round(prob * 100, 1)
-
     fig = go.Figure(
         go.Indicator(
             mode="gauge+number",
             value=pct,
-            number={
-                "suffix": "%",
-                "font": {"size": 44, "color": "#101418", "family": "Arial Black"},
-            },
+            number={"suffix": "%", "font": {"size": 44, "color": "#101418", "family": "Arial Black"}},
             title={"text": "", "font": {"size": 1}},
             gauge={
-                "shape": "angular",  # semicircular
-                "axis": {
-                    "range": [0, 100],
-                    "tickmode": "array",
-                    "tickvals": [0, 20, 40, 60, 80, 100],
-                    "ticktext": ["0", "20", "40", "60", "80", "100"],
-                    "tickwidth": 0,
-                    "ticks": "",
-                },
-                "bar": {"color": "rgba(0,0,0,0)"},  # sin barra: solo aguja
-                "threshold": {
-                    "line": {"color": "#111", "width": 6},  # “aguja”
-                    "thickness": 0.9,
-                    "value": pct,
-                },
-                "borderwidth": 0,
-                "bgcolor": "rgba(0,0,0,0)",
-                # <<< Degradado real con muchos pasos >>>
+                "shape": "angular",
+                "axis": {"range": [0, 100], "tickmode": "array", "tickvals": [0,20,40,60,80,100],
+                         "ticktext": ["0","20","40","60","80","100"], "tickwidth": 0, "ticks": ""},
+                "bar": {"color": "rgba(0,0,0,0)"},
+                "threshold": {"line": {"color": "#111", "width": 6}, "thickness": 0.9, "value": pct},
+                "borderwidth": 0, "bgcolor": "rgba(0,0,0,0)",
                 "steps": make_gradient_steps(n=80, vmin=0, vmax=100),
             },
             domain={"x": [0, 1], "y": [0, 1]},
         )
     )
-
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=10, r=10, t=10, b=0),
-        height=300,
-        font=dict(color="#101418", family="Arial"),
-        transition={"duration": 500, "easing": "cubic-in-out"},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=10, b=0), height=300,
+        font=dict(color="#101418", family="Arial"), transition={"duration": 500, "easing": "cubic-in-out"},
     )
-
-    # Card con tu CSS existente (gauge-card)
-    st.markdown(f"""
-    <div class="gauge-card">
-      <div class="gauge-title">{title}</div>
-    """, unsafe_allow_html=True)
+    st.markdown(f'<div class="gauge-card"><div class="gauge-title">{title}</div>', unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.markdown("""
-      <div class="gauge-subtitle">Probabilidad estimada de phishing</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="gauge-subtitle">Probabilidad estimada de phishing</div></div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------------------
-# Lógica principal
-# ---------------------------------------------------------------
+# ------------------ Mapeo de riesgo a mensajes ------------------
+def riesgo_bucket(p: float):
+    if p < 0.20:   return "Bajo",  "Parece legítimo, pero mantené precaución."
+    if p < 0.50:   return "Medio", "Verificá la dirección antes de interactuar."
+    if p < 0.80:   return "Alto",  "No ingreses datos; comprobá por canales oficiales."
+    return "Muy alto", "No hagas clic ni ingreses credenciales; reportalo."
+
+# ------------------------ Predicción ----------------------------
 def predict_and_show(dominio: str):
-    # Extracción de features
-    with st.spinner("Extrayendo features (WHOIS + scraping)…"):
-        base_feats = procesar_dominio_basico(dominio)
-        dyn_feats = enriquecer_dominio_scraping(dominio)
-        feats = {**(base_feats or {}), **(dyn_feats or {})}
-
-    # Orden esperado
-    expected_order = get_expected_order(feature_order, scaler, model, list(feats.keys()))
-    scaler_in_use = scaler
-    expected_numeric = [c for c in expected_order if c in NUMERIC_FEATURES]
-
-    # Columnas del scaler
-    if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
-        scaler_cols = [str(c) for c in scaler_in_use.feature_names_in_]
-    else:
-        scaler_cols = expected_numeric
-
-    # Info de debug ligera
-    extra_in_scaler = [c for c in scaler_cols if c not in expected_numeric]
-    if extra_in_scaler:
-        st.info("Se omiten en la salida del scaler columnas no usadas por el modelo: " + ", ".join(extra_in_scaler))
-
-    # Mostrar diferencias de columnas
-    render_diffs(feats, expected_order)
-
-    # Alinear vector
-    X = ensure_feature_vector(feats, expected_order)
-
-    # Aplicar scaler SOLO a columnas que coinciden
-    X_in = X.copy()
-    scaler_input = pd.DataFrame(columns=scaler_cols)
-    for c in scaler_cols:
-        if c in X.columns:
-            scaler_input[c] = X[c].values
-        else:
-            scaler_input[c] = 0.0
     try:
-        scaled_array = scaler_in_use.transform(scaler_input[scaler_cols])
-    except Exception as se:
-        st.error(f"Error aplicando el scaler sobre columnas {scaler_cols}: {se}")
-        st.stop()
+        with st.spinner("Analizando…"):
+            base_feats = procesar_dominio_basico(dominio)
+            dyn_feats  = enriquecer_dominio_scraping(dominio)
+            feats = {**(base_feats or {}), **(dyn_feats or {})}
 
-    overlap_cols = [c for c in scaler_cols if c in expected_numeric]
-    if overlap_cols:
-        idx_map = [scaler_cols.index(c) for c in overlap_cols]
-        X_in.loc[:, overlap_cols] = scaled_array[:, idx_map]
-    else:
-        st.warning("No hay columnas numéricas en común entre el scaler y el modelo; se continúa sin modificar X.")
+            expected_order = get_expected_order(load_feature_order(FEATURE_ORDER_PATH, model), scaler, model, list(feats.keys()))
+            X = ensure_feature_vector(feats, expected_order)
 
-    # Predicción
-    with st.spinner("Prediciendo…"):
-        proba = None
-        if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X_in)
-        y_pred = model.predict(X_in)
+            # preparar columnas para el scaler
+            if hasattr(scaler, "feature_names_in_") and getattr(scaler, "feature_names_in_", None) is not None:
+                scaler_cols = [str(c) for c in scaler.feature_names_in_]
+            else:
+                scaler_cols = [c for c in expected_order if c in NUMERIC_FEATURES]
 
-    label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
-    if proba is not None and np.ndim(proba) == 2 and proba.shape[1] >= 2:
-        p_phishing = float(proba[0, 1])
-    else:
-        p_phishing = 1.0 if label == 1 else 0.0
+            scaler_input = pd.DataFrame(columns=scaler_cols)
+            for c in scaler_cols:
+                scaler_input[c] = X[c].values if c in X.columns else 0.0
 
-    # === Mostrar resultado con tacómetro "dashboard" + meta ===
+            scaled_array = scaler.transform(scaler_input[scaler_cols])
+
+            # aplicar escalado solo a las columnas numéricas que coinciden
+            overlap_cols = [c for c in scaler_cols if c in X.columns]
+            if overlap_cols:
+                idx_map = [scaler_cols.index(c) for c in overlap_cols]
+                X.loc[:, overlap_cols] = scaled_array[:, idx_map]
+
+            # predicción
+            if hasattr(model, "predict_proba"):
+                proba = model.predict_proba(X)
+            else:
+                proba = None
+            y_pred = model.predict(X)
+
+            label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
+            p_phishing = float(proba[0, 1]) if (proba is not None and np.ndim(proba) == 2 and proba.shape[1] >= 2) else (1.0 if label == 1 else 0.0)
+    except Exception as e:
+        st.error("No se pudo analizar la URL en este momento.")
+        if DEV_MODE: st.exception(e)
+        return
+
+    # ---------- Presentación amigable ----------
     nivel, recomendacion = riesgo_bucket(p_phishing)
-
     render_tacometro_dashboard(p_phishing, title="Phishing Risk")
 
     colA, colB = st.columns([1, 1])
     with colA:
-        if label == 1:
-            st.error(f"**Resultado:** Posible PHISHING")
-        else:
-            st.success(f"**Resultado:** No phishing")
+        st.markdown(f"**Resultado:** {'Posible PHISHING' if label == 1 else 'No phishing'}")
         st.markdown(f"**Probabilidad (clase 1):** {p_phishing:.3f}")
     with colB:
         st.markdown(f"**Nivel de riesgo:** {nivel}")
         st.caption(recomendacion)
 
-    # (Opcional) detalles técnicos
-    with st.expander("Ver vector de features alineado"):
-        st.dataframe(X.T.rename(columns={0: "valor"}))
-        if hasattr(scaler_in_use, "feature_names_in_") and getattr(scaler_in_use, "feature_names_in_", None) is not None:
-            st.caption("Columnas esperadas por el scaler (deberían coincidir con las numéricas):")
-            st.code(", ".join(list(scaler_in_use.feature_names_in_)))
+    # Bloque de acciones rápidas (sin jerga)
+    st.markdown("**Qué podés hacer ahora:**")
+    st.markdown(
+        "- No ingreses contraseñas ni datos bancarios.\n"
+        "- Verificá la dirección escribiéndola manualmente en el navegador.\n"
+        "- Si recibiste la URL por email/SMS, contactá al emisor por un **canal oficial**."
+    )
 
-# ---------------------------------------------------------------
-# Evento de análisis
-# ---------------------------------------------------------------
+    # ---------------- Solo si Modo avanzado ----------------
+    if DEV_MODE:
+        with st.expander("Detalles técnicos (solo avanzado)"):
+            st.write("Dominio:", dominio)
+            st.write("Vector de features (ordenado):")
+            st.dataframe(X.T.rename(columns={0: "valor"}))
+
+# ------------------------ Evento de UI --------------------------
 if analizar:
-    if not entrada.strip():
-        st.warning("Ingresá una URL o dominio válido.")
-    elif procesar_dominio_basico is None or enriquecer_dominio_scraping is None:
-        st.error("No se pudieron importar las funciones de features. Revisá `features.py`.")
-    elif model is None:
-        st.error("No se pudo cargar el modelo.")
+    if not url_input.strip():
+        st.warning("Ingresá una URL válida.")
     else:
-        try:
-            dominio = normalize_to_domain(entrada)
-            if not dominio:
-                st.warning("No se pudo interpretar la entrada como dominio/URL.")
-            else:
-                predict_and_show(dominio)
-        except Exception as e:  # pragma: no cover
-            st.exception(e)
+        dominio = normalize_to_domain(url_input)
+        if not dominio:
+            st.warning("No se pudo interpretar la entrada como dominio/URL.")
+        else:
+            predict_and_show(dominio)
 
-# ---------------------------------------------------------------
-# Descargo de responsabilidad permanente
-# ---------------------------------------------------------------
+# ------------------- Descargo de responsabilidad ----------------
 st.divider()
 st.markdown(
     """
@@ -481,8 +326,4 @@ No reemplaza tu criterio ni verifica la identidad de ninguna organización.
 Ante dudas, **no ingreses datos sensibles** (contraseñas, tarjetas) y verificá por **canales oficiales**.
 """
 )
-
-# Pie informativo
-st.caption(
-    "Modelo: XGBoost ya entrenado. Ajustá rutas y asegurate de que `features.py` exponga las funciones requeridas."
-)
+st.caption('<span class="small-muted">Si necesitás un informe técnico, activá “Modo avanzado” en la barra lateral.</span>', unsafe_allow_html=True)
