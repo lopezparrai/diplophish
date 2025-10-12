@@ -248,7 +248,7 @@ def render_tacometro(prob: float):
                 },
                 "borderwidth": 0,
                 "bgcolor": "rgba(0,0,0,0)",
-                "steps": make_gradient_steps(n=160, vmin=0, vmax=100),
+                "steps": make_gradient_steps(n=220, vmin=0, vmax=100),
             },
             domain={"x": [0, 1], "y": [0, 1]},
         )
