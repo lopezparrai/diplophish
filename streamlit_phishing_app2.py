@@ -175,6 +175,7 @@ def render_tacometro(prob: float):
         height=280,
         transition={"duration":500,"easing":"cubic-in-out"},
     )
+    st.markdown('<div class="gauge-card">', unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar":False})
     st.markdown('</div>', unsafe_allow_html=True)
 
