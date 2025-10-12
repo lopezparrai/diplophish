@@ -100,6 +100,27 @@ div.stButton > button:first-child:hover {
 
 st.markdown("""
 <style>
+.plot-container {
+    margin-top: 1rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+.result-banner {
+    animation: fadeIn 0.6s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+<style>
 .block-container {
     padding-top: 4rem;  /* antes 2rem */
     padding-bottom: 1rem;
@@ -266,7 +287,7 @@ def ensure_feature_vector(feat_map: Dict[str, float], feature_order: List[str]) 
     return pd.DataFrame([{k:_cast(feat_map.get(k,0.0)) for k in feature_order}], columns=feature_order)
 
 # ===================== Interfaz principal =====================
-url_input = st.text_input("Pegá la URL a analizar:", placeholder="https://www.ejemplo.com")
+url_input = st.text_input("Pegá la URL a analizar:", placeholder="https://www.ejemplo.com", help="Incluí el dominio o la URL completa.")
 analizar = st.button("🔍 Analizar", use_container_width=True)
 
 # ===================== Predicción =====================
@@ -315,7 +336,7 @@ if analizar:
 # ===================== Footer breve =====================
 st.markdown("""
 <div style='text-align:center; font-size:0.8rem; color:#9ca3af; margin-top:2rem;'>
-Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio | DiploDatos 2025
+DiploDatos 2025 — Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.
 </div>
 """, unsafe_allow_html=True)
 
