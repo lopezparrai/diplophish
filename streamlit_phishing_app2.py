@@ -158,24 +158,14 @@ def render_tacometro(prob: float):
         go.Indicator(
             mode="gauge+number",
             value=pct,
-            number={
-                "suffix": "%",
-                "font": {"size": 46, "color": "#101418", "family": "Arial Black"},
-            },
+            number={"suffix": "%", "font": {"size": 46, "color": "#101418", "family": "Arial Black"}},
             gauge={
                 "shape": "angular",
-                "axis": {
-                    "range": [0, 100],
-                    "tickwidth": 0,
-                    "ticks": "",
-                },
-                # 🔹 Elimina por completo la barra interna
+                "axis": {"range": [0, 100], "tickwidth": 0, "ticks": ""},
+                # barra interna eliminada:
                 "bar": {"color": "rgba(0,0,0,0)", "thickness": 0},
-                "threshold": {
-                    "line": {"color": "#111", "width": 6},
-                    "thickness": 0.9,
-                    "value": pct,
-                },
+                # “aguja”:
+                "threshold": {"line": {"color": "#111", "width": 6}, "thickness": 0.9, "value": pct},
                 "borderwidth": 0,
                 "bgcolor": "rgba(0,0,0,0)",
                 "steps": make_gradient_steps(n=80, vmin=0, vmax=100),
@@ -184,13 +174,12 @@ def render_tacometro(prob: float):
         )
     )
 
-    # 🔹 Ajuste fino de márgenes y fondo
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=-30, b=0),
-        height=260,
-        transition={"duration": 500, "easing": "cubic-in-out"},
+        height=260
+        # <- sin 'transition'
     )
 
     st.markdown('<div class="gauge-card">', unsafe_allow_html=True)
