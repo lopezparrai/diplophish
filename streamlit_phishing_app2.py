@@ -80,9 +80,9 @@ div.stButton > button:first-child {
     transition: all 0.2s ease-in-out;
 }
 div.stButton > button:first-child:hover {
-    background: linear-gradient(90deg, #1d4ed8, #059669);
+    background: #1d4ed8;  /* Azul sólido */
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(16,185,129,0.35);
+    box-shadow: 0 6px 20px rgba(29,78,216,0.35); /* sombra azulada */
 }
 div.stButton > button:first-child:active {
     transform: scale(0.98);
@@ -104,7 +104,6 @@ st.markdown("""
 
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>🛡️ Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
-st.caption("Pegá una URL y analizaremos su nivel de riesgo en segundos.")
 
 # ===================== Paths =====================
 MODEL_PATH = Path("models/xgb_phishing.pkl")
@@ -300,7 +299,7 @@ def predict_and_show(dominio: str):
 # ===================== Evento de análisis =====================
 if analizar:
     if not url_input.strip():
-        st.warning("Ingresá una URL válida.")
+        st.warning("Ingresá una URL válida:")
     else:
         dominio = normalize_to_domain(url_input)
         if not dominio:
@@ -311,7 +310,7 @@ if analizar:
 # ===================== Footer breve =====================
 st.markdown("""
 <div style='text-align:center; font-size:0.8rem; color:#9ca3af; margin-top:2rem;'>
-⚠️ Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.
+Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio | DiploDatos 2025
 </div>
 """, unsafe_allow_html=True)
 
