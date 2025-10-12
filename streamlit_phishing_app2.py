@@ -260,7 +260,7 @@ def ensure_feature_vector(feat_map: Dict[str, float], feature_order: List[str]) 
     return pd.DataFrame([{k:_cast(feat_map.get(k,0.0)) for k in feature_order}], columns=feature_order)
 
 # ===================== Interfaz principal =====================
-url_input = st.text_input("Pegá la URL a analizar", placeholder="https://www.ejemplo.com")
+url_input = st.text_input("Pegá la URL a analizar:", placeholder="https://www.ejemplo.com")
 analizar = st.button("🔍 Analizar", use_container_width=True)
 
 # ===================== Predicción =====================
