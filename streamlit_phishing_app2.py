@@ -268,13 +268,6 @@ analizar_enter = bool(st.session_state.get("submit_requested", False) and valido
 analizar = analizar_click or analizar_enter
 st.session_state["submit_requested"] = False
 
-if analizar:
-    if not valido:
-        st.warning("Ingresá una URL con formato válido.")
-    else:
-        dominio = normalize_to_domain(url_input)
-        predict_and_show(dominio)
-
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
     with st.spinner("Analizando…"):
