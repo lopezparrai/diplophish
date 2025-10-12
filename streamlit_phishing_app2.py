@@ -118,6 +118,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+html, body, [data-testid="stAppViewContainer"] {
+    height: 100%;
+}
+.block-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 90vh;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
