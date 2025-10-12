@@ -259,29 +259,52 @@ def riesgo_bucket(p: float):
     else:
         return "Muy alto", "No hagas clic ni ingreses credenciales; reportalo."
 
+# --- Helper: genera pasos de color con degradado suave verde→amarillo→rojo
+def make_gradient_steps(n: int = 80, vmin: float = 0.0, vmax: float = 100.0):
+    """
+    Devuelve una lista de steps para el gauge de Plotly, usando un degradado
+    continuo de verde (#21c55d) → amarillo (#facc15) → rojo (#ef4444).
+    """
+    # Stops en espacio RGB
+    stops = [
+        (0.00, (33, 197, 93)),   # #21c55d  verde
+        (0.50, (250, 204, 21)),  # #facc15  amarillo
+        (1.00, (239, 68, 68)),   # #ef4444  rojo
+    ]
+
+    def lerp(a, b, t):  # interpolación lineal
+        return a + (b - a) * t
+
+    def interp_color(p: float):
+        # p en [0,1]
+        for (p0, c0), (p1, c1) in zip(stops[:-1], stops[1:]):
+            if p <= p1:
+                t = (p - p0) / (p1 - p0)
+                r = int(lerp(c0[0], c1[0], t))
+                g = int(lerp(c0[1], c1[1], t))
+                b = int(lerp(c0[2], c1[2], t))
+                return f"rgb({r},{g},{b})"
+        r, g, b = stops[-1][1]
+        return f"rgb({r},{g},{b})"
+
+    steps = []
+    span = vmax - vmin
+    for i in range(n):
+        a = vmin + (i * span) / n
+        b = vmin + ((i + 1) * span) / n
+        p_mid = (i + 0.5) / n  # punto medio del tramo
+        steps.append({"range": [a, b], "color": interp_color(p_mid)})
+    return steps
+
+
 def render_tacometro_dashboard(prob: float, title: str = "Phishing Risk"):
     """
-    Tacómetro semicircular estilo dashboard:
-    - Card con sombra y fondo degradado
-    - Escala verde→amarillo→rojo en 10 pasos (degradado suave)
-    - Aguja simulada con threshold
-    - Texto grande del porcentaje
+    Tacómetro semicircular estilo dashboard con degradado suave verde→rojo.
+    Usa 'threshold' como aguja y oculta la barra para un look similar al velocímetro.
     """
-    pct = round(prob * 100, 1)
+    import plotly.graph_objects as go
 
-    # Paleta suave con degradado (10 pasos para transición linda)
-    steps = [
-        (0, 10,  "#1db954"),
-        (10, 20, "#3ddc84"),
-        (20, 30, "#8be28b"),
-        (30, 40, "#c4e79a"),
-        (40, 50, "#ffeb84"),
-        (50, 60, "#ffd654"),
-        (60, 70, "#ffb347"),
-        (70, 80, "#ff9247"),
-        (80, 90, "#ff6b57"),
-        (90, 100,"#ff4155"),
-    ]
+    pct = round(prob * 100, 1)
 
     fig = go.Figure(
         go.Indicator(
@@ -291,9 +314,9 @@ def render_tacometro_dashboard(prob: float, title: str = "Phishing Risk"):
                 "suffix": "%",
                 "font": {"size": 44, "color": "#101418", "family": "Arial Black"},
             },
-            title={"text": "", "font": {"size": 1}},  # el título lo renderizamos fuera
+            title={"text": "", "font": {"size": 1}},
             gauge={
-                "shape": "angular",
+                "shape": "angular",  # semicircular
                 "axis": {
                     "range": [0, 100],
                     "tickmode": "array",
@@ -302,21 +325,21 @@ def render_tacometro_dashboard(prob: float, title: str = "Phishing Risk"):
                     "tickwidth": 0,
                     "ticks": "",
                 },
-                "bar": {"color": "rgba(0,0,0,0)"},  # barra invisible para look de aguja
+                "bar": {"color": "rgba(0,0,0,0)"},  # sin barra: solo aguja
                 "threshold": {
-                    "line": {"color": "#111", "width": 6},
+                    "line": {"color": "#111", "width": 6},  # “aguja”
                     "thickness": 0.9,
                     "value": pct,
                 },
                 "borderwidth": 0,
                 "bgcolor": "rgba(0,0,0,0)",
-                "steps": [{"range": [a, b], "color": c} for (a, b, c) in steps],
+                # <<< Degradado real con muchos pasos >>>
+                "steps": make_gradient_steps(n=80, vmin=0, vmax=100),
             },
             domain={"x": [0, 1], "y": [0, 1]},
         )
     )
 
-    # Layout limpio + transición suave (vía layout.transition)
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -326,13 +349,13 @@ def render_tacometro_dashboard(prob: float, title: str = "Phishing Risk"):
         transition={"duration": 500, "easing": "cubic-in-out"},
     )
 
-    # Render en una "card" estilizada
+    # Card con tu CSS existente (gauge-card)
     st.markdown(f"""
     <div class="gauge-card">
       <div class="gauge-title">{title}</div>
     """, unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.markdown(f"""
+    st.markdown("""
       <div class="gauge-subtitle">Probabilidad estimada de phishing</div>
     </div>
     """, unsafe_allow_html=True)
