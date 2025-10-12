@@ -172,14 +172,14 @@ def render_tacometro(prob: float):
             },
             gauge={
                 "shape": "angular",
-                "axis": {"range": [0, 100], "tickwidth": 0, "ticks": ""},
+                "axis": {"range":[0,100], "ticks":"", "tickvals":[], "ticktext":[], "tickwidth":0},
                 # barra interna eliminada
                 "bar": {"color": "rgba(0,0,0,0)", "thickness": 0},
                 # “aguja”
                 "threshold": {"line": {"color": "#111", "width": 6}, "thickness": 0.9, "value": pct},
                 "borderwidth": 0,
                 "bgcolor": "rgba(0,0,0,0)",
-                "steps": make_gradient_steps(n=80, vmin=0, vmax=100),
+                "steps": make_gradient_steps(n=160, vmin=0, vmax=100),
             },
             domain={"x": [0, 1], "y": [0, 1]},
         )
