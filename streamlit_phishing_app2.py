@@ -58,6 +58,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* Oculta cualquier barra de progreso/residuo tipo slider */
+div[data-testid="stProgress"] { display:none !important; }
+</style>
+""", unsafe_allow_html=True)
+
+
 # ===================== Encabezado =====================
 st.title("🛡️ Detector de sitios sospechosos")
 st.caption("Ingresá una URL para estimar el riesgo de phishing.")
