@@ -65,6 +65,30 @@ div[data-testid="stProgress"] { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+div.stButton > button:first-child {
+    background: linear-gradient(90deg, #2563eb, #10b981);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    height: 2.8em;
+    width: 100%;
+    box-shadow: 0 4px 14px rgba(37,99,235,0.3);
+    transition: all 0.2s ease-in-out;
+}
+div.stButton > button:first-child:hover {
+    background: linear-gradient(90deg, #1d4ed8, #059669);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16,185,129,0.35);
+}
+div.stButton > button:first-child:active {
+    transform: scale(0.98);
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ===================== Encabezado =====================
 st.title("🛡️ Detector de sitios sospechosos")
