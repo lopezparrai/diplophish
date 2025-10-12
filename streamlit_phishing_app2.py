@@ -18,7 +18,7 @@ import re
 from urllib.parse import urlparse
 
 # ===================== Configuración de página =====================
-st.set_page_config(page_title="🕵️ ¿Es phishing o no?", page_icon="🕵️", layout="centered")
+st.set_page_config(page_title="¿Es phishing o no?", page_icon="🕵️", layout="centered")
 
 # ===================== Estilos globales ============================
 st.markdown("""
@@ -106,7 +106,7 @@ form button[kind="primary"]:active {
 
 
 # ===================== Encabezado =====================
-st.markdown("<h1 style='text-align:center;'>Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center;'>¿Es phishing o no?</h1>", unsafe_allow_html=True)
 
 # ===================== Paths =====================
 MODEL_PATH = Path("models/xgb_phishing.pkl")
