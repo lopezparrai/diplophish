@@ -241,10 +241,29 @@ if scaler is None:
     st.error("Falta el archivo del scaler.")
     st.stop()
 
-# ===================== Interfaz: formulario (Enter envía) =======
-with st.form(key="analisis_form", clear_on_submit=False):
-    url_input = st.text_input("Pegá la URL a analizar:", placeholder="https://www.ejemplo.com", help="Incluí el dominio o la URL completa.")
-    analizar = st.form_submit_button("🔍  Analizar", use_container_width=True)
+# ===================== Interfaz principal (sin st.form) =====================
+
+# --- Soporte para presionar ENTER y ejecutar ---
+def _trigger_submit():
+    st.session_state["submit_requested"] = True
+
+url_input = st.text_input(
+    "Pegá la URL a analizar:",
+    placeholder="https://www.ejemplo.com",
+    help="Incluí el dominio o la URL completa.",
+    key="url_input",
+    on_change=_trigger_submit
+)
+
+# --- Botón Analizar ---
+analizar_click = st.button("🔍  Analizar", use_container_width=True)
+analizar_enter = st.session_state.get("submit_requested", False)
+analizar = analizar_click or analizar_enter
+
+# --- Reset flag para evitar loops ---
+if analizar_enter:
+    st.session_state["submit_requested"] = False
+
 
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
