@@ -18,7 +18,7 @@ import re
 from urllib.parse import urlparse
 
 # ===================== Configuración de página =====================
-st.set_page_config(page_title="Detector de phishing", page_icon="🛡️", layout="centered")
+st.set_page_config(page_title="🕵️ ¿Es phishing o no?", page_icon="🕵️", layout="centered")
 
 # ===================== Estilos globales ============================
 st.markdown("""
