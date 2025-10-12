@@ -1,8 +1,9 @@
 # streamlit_phishing_app.py
 # ---------------------------------------------------------------
-# App minimal para clasificar una URL/Dominio como phishing (1) o no (0)
-# Requisitos: streamlit, joblib (o pickle), xgboost (solo si lo requiere tu modelo), pandas, numpy, plotly
-# Tu código de features debe exponer:
+# App para clasificar una URL/Dominio como phishing (1) o no (0)
+# Requisitos: streamlit, joblib (o pickle), xgboost (si tu modelo lo requiere),
+#             pandas, numpy, plotly
+# Tu archivo features.py debe exponer:
 #   - procesar_dominio_basico(dominio: str) -> dict
 #   - enriquecer_dominio_scraping(dominio: str) -> dict
 #
@@ -11,7 +12,7 @@
 #   - models/xgb_phishing.pkl    (tu modelo ya entrenado: joblib.dump o pickle)
 #   - models/standard_scaler.pkl (requerido para este deployment)
 #   - feature_order.json         (orden de features usado para entrenar, opcional)
-#   - features.py                (con tus dos funciones de extracción)
+#   - features.py                (con tus funciones de extracción)
 #
 # Ejecutar localmente:
 #   streamlit run streamlit_phishing_app.py
@@ -26,7 +27,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go  # <-- Tacómetro
+import plotly.graph_objects as go
 
 # Normalización de URLs/dominos
 import re
@@ -39,6 +40,30 @@ st.set_page_config(page_title="Clasificador de Phishing", page_icon="🛡️", l
 
 st.title("🛡️ Clasificador de URLs: Phishing vs. Legítimo")
 st.caption("Ingresá una URL o dominio, presioná **Analizar** y obtené la predicción del modelo.")
+
+# ==== Estilos de dashboard (card con sombra + degradado) ====
+st.markdown("""
+<style>
+.gauge-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 60%, #eef2f7 100%);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(30, 42, 70, 0.15), 0 2px 6px rgba(30, 42, 70, 0.08);
+  padding: 18px 18px 8px 18px;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+.gauge-title {
+  font-size: 0.95rem;
+  color: #5b6b7f;
+  margin: 0 0 6px 2px;
+  letter-spacing: .3px;
+}
+.gauge-subtitle {
+  font-size: 0.85rem;
+  color: #7a8a9f;
+  margin: -6px 0 10px 2px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------
 # Paths (ajústalos si tu estructura difiere)
@@ -205,7 +230,7 @@ if scaler is None:
     st.stop()
 
 # ---------------------------------------------------------------
-# Visuales: difs de features y tacómetro
+# Visuales: difs de features y tacómetro (dashboard)
 # ---------------------------------------------------------------
 def render_diffs(calculadas: Dict[str, float], esperadas: List[str]):
     calculadas_cols = set(calculadas.keys())
@@ -224,7 +249,7 @@ def render_diffs(calculadas: Dict[str, float], esperadas: List[str]):
             st.write(", ".join(sorted(sobrantes)))
 
 def riesgo_bucket(p: float):
-    """Devuelve etiqueta y recomendación según prob. de phishing."""
+    """Etiqueta y recomendación según prob. de phishing."""
     if p < 0.20:
         return "Bajo", "Parece legítimo, pero mantené precaución."
     elif p < 0.50:
@@ -234,65 +259,83 @@ def riesgo_bucket(p: float):
     else:
         return "Muy alto", "No hagas clic ni ingreses credenciales; reportalo."
 
-def render_tacometro(prob: float):
-    """Tacómetro verde→rojo moderno con estética suave y aguja."""
+def render_tacometro_dashboard(prob: float, title: str = "Phishing Risk"):
+    """
+    Tacómetro semicircular estilo dashboard:
+    - Card con sombra y fondo degradado
+    - Escala verde→amarillo→rojo en 10 pasos (degradado suave)
+    - Aguja simulada con threshold
+    - Texto grande del porcentaje
+    """
     pct = round(prob * 100, 1)
 
-    # Configuración base del gauge
+    # Paleta suave con degradado (10 pasos para transición linda)
+    steps = [
+        (0, 10,  "#1db954"),
+        (10, 20, "#3ddc84"),
+        (20, 30, "#8be28b"),
+        (30, 40, "#c4e79a"),
+        (40, 50, "#ffeb84"),
+        (50, 60, "#ffd654"),
+        (60, 70, "#ffb347"),
+        (70, 80, "#ff9247"),
+        (80, 90, "#ff6b57"),
+        (90, 100,"#ff4155"),
+    ]
+
     fig = go.Figure(
         go.Indicator(
-            mode="gauge+number+delta",
+            mode="gauge+number",
             value=pct,
             number={
                 "suffix": "%",
-                "font": {"size": 40, "color": "black", "family": "Arial Black"},
+                "font": {"size": 44, "color": "#101418", "family": "Arial Black"},
             },
-            delta={
-                "reference": 50,
-                "increasing": {"color": "#e74c3c"},
-                "decreasing": {"color": "#1ab744"},
-            },
+            title={"text": "", "font": {"size": 1}},  # el título lo renderizamos fuera
             gauge={
-                "axis": {"range": [0, 100], "tickwidth": 0, "tickcolor": "darkgray"},
-                "bar": {"color": "rgba(0,0,0,0)"},
-                "borderwidth": 0,
-                "steps": [
-                    {"range": [0, 20], "color": "#3D9970"},   # verde oscuro
-                    {"range": [20, 40], "color": "#2ECC40"},  # verde claro
-                    {"range": [40, 60], "color": "#FFDC00"},  # amarillo
-                    {"range": [60, 80], "color": "#FF851B"},  # naranja
-                    {"range": [80, 100], "color": "#FF4136"}, # rojo
-                ],
+                "shape": "angular",
+                "axis": {
+                    "range": [0, 100],
+                    "tickmode": "array",
+                    "tickvals": [0, 20, 40, 60, 80, 100],
+                    "ticktext": ["0", "20", "40", "60", "80", "100"],
+                    "tickwidth": 0,
+                    "ticks": "",
+                },
+                "bar": {"color": "rgba(0,0,0,0)"},  # barra invisible para look de aguja
                 "threshold": {
-                    "line": {"color": "black", "width": 5},
+                    "line": {"color": "#111", "width": 6},
                     "thickness": 0.9,
                     "value": pct,
                 },
-            },
-            title={
-                "text": "Nivel estimado de riesgo",
-                "font": {"size": 18, "color": "gray", "family": "Arial"},
+                "borderwidth": 0,
+                "bgcolor": "rgba(0,0,0,0)",
+                "steps": [{"range": [a, b], "color": c} for (a, b, c) in steps],
             },
             domain={"x": [0, 1], "y": [0, 1]},
         )
     )
 
-    # Layout más atractivo y minimalista
+    # Layout limpio + transición suave (vía layout.transition)
     fig.update_layout(
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        margin=dict(l=15, r=15, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=10, b=0),
         height=300,
-        font=dict(color="black", family="Arial"),
+        font=dict(color="#101418", family="Arial"),
+        transition={"duration": 500, "easing": "cubic-in-out"},
     )
 
-    fig.update_traces(
-    selector=dict(type='indicator'),
-    gauge={"animation": {"easing": "elastic-in-out", "duration": 800}}
-    )
-    
-    # Mostrar con animación
+    # Render en una "card" estilizada
+    st.markdown(f"""
+    <div class="gauge-card">
+      <div class="gauge-title">{title}</div>
+    """, unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.markdown(f"""
+      <div class="gauge-subtitle">Probabilidad estimada de phishing</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------
 # Lógica principal
@@ -360,17 +403,19 @@ def predict_and_show(dominio: str):
     else:
         p_phishing = 1.0 if label == 1 else 0.0
 
-    # === Mostrar resultado con tacómetro ===
+    # === Mostrar resultado con tacómetro "dashboard" + meta ===
     nivel, recomendacion = riesgo_bucket(p_phishing)
 
-    col_gauge, col_text = st.columns([1, 1])
-    with col_gauge:
-        render_tacometro(p_phishing)
-    with col_text:
+    render_tacometro_dashboard(p_phishing, title="Phishing Risk")
+
+    colA, colB = st.columns([1, 1])
+    with colA:
         if label == 1:
-            st.error(f"**Posible PHISHING** — prob. clase 1: **{p_phishing:.3f}**")
+            st.error(f"**Resultado:** Posible PHISHING")
         else:
-            st.success(f"**No phishing** — prob. clase 1: **{p_phishing:.3f}**")
+            st.success(f"**Resultado:** No phishing")
+        st.markdown(f"**Probabilidad (clase 1):** {p_phishing:.3f}")
+    with colB:
         st.markdown(f"**Nivel de riesgo:** {nivel}")
         st.caption(recomendacion)
 
