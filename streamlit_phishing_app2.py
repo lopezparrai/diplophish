@@ -67,9 +67,6 @@ div[data-testid="stProgress"] { display:none !important; }
 
 st.markdown("""
 <style>
-
-st.markdown("""
-<style>
 div.stButton > button:first-child {
     background-color: #2563eb;           /* azul base */
     color: #ffffff;
