@@ -82,7 +82,7 @@ div.stButton > button:first-child {
 div.stButton > button:first-child:hover {
     background: #1d4ed8;  /* Azul sólido */
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(29,78,216,0.35); /* sombra azulada */
+    box-shadow: 0 6px 20px rgba(29,78,216,0.35);
 }
 div.stButton > button:first-child:active {
     transform: scale(0.98);
@@ -100,7 +100,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>🛡️ Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
