@@ -153,32 +153,48 @@ def make_gradient_steps(n: int = 80, vmin: float = 0.0, vmax: float = 100.0):
 
 def render_tacometro(prob: float):
     pct = round(prob * 100, 1)
+
     fig = go.Figure(
         go.Indicator(
-            mode="gauge+number",                    # <- muestra el número
+            mode="gauge+number",
             value=pct,
-            number={                                 # <- formato del porcentaje
+            number={
                 "suffix": "%",
-                "font": {"size": 44, "color": "#101418", "family": "Arial Black"},
+                "font": {"size": 46, "color": "#101418", "family": "Arial Black"},
             },
             gauge={
-                "shape":"angular",
-                "axis":{"range":[0,100], "tickwidth":0, "ticks":""},
-                "bar":{"color":"rgba(0,0,0,0)"},
-                "threshold":{"line":{"color":"#111","width":6}, "thickness":0.9, "value":pct},
-                "borderwidth":0, "bgcolor":"rgba(0,0,0,0)",
+                "shape": "angular",
+                "axis": {
+                    "range": [0, 100],
+                    "tickwidth": 0,
+                    "ticks": "",
+                },
+                # 🔹 Elimina por completo la barra interna
+                "bar": {"color": "rgba(0,0,0,0)", "thickness": 0},
+                "threshold": {
+                    "line": {"color": "#111", "width": 6},
+                    "thickness": 0.9,
+                    "value": pct,
+                },
+                "borderwidth": 0,
+                "bgcolor": "rgba(0,0,0,0)",
                 "steps": make_gradient_steps(n=80, vmin=0, vmax=100),
             },
-            domain={"x":[0,1],"y":[0,1]},
+            domain={"x": [0, 1], "y": [0, 1]},
         )
     )
+
+    # 🔹 Ajuste fino de márgenes y fondo
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=10, r=10, t=0, b=0), height=280,
-        transition={"duration":500, "easing":"cubic-in-out"},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=-30, b=0),
+        height=260,
+        transition={"duration": 500, "easing": "cubic-in-out"},
     )
+
     st.markdown('<div class="gauge-card">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar":False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ===================== Carga artefactos =====================
