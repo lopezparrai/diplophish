@@ -1,4 +1,4 @@
-c# streamlit_phishing_app.py
+# streamlit_phishing_app.py
 # ---------------------------------------------------------------
 # Detector de phishing — versión final pulida y minimalista
 # ---------------------------------------------------------------
