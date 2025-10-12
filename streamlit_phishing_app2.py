@@ -158,13 +158,16 @@ def render_tacometro(prob: float):
         go.Indicator(
             mode="gauge+number",
             value=pct,
-            number={"suffix": "%", "font": {"size": 46, "color": "#101418", "family": "Arial Black"}},
+            number={
+                "suffix": "%",
+                "font": {"size": 46, "color": "#101418", "family": "Arial Black"},
+            },
             gauge={
                 "shape": "angular",
                 "axis": {"range": [0, 100], "tickwidth": 0, "ticks": ""},
-                # barra interna eliminada:
+                # barra interna eliminada
                 "bar": {"color": "rgba(0,0,0,0)", "thickness": 0},
-                # “aguja”:
+                # “aguja”
                 "threshold": {"line": {"color": "#111", "width": 6}, "thickness": 0.9, "value": pct},
                 "borderwidth": 0,
                 "bgcolor": "rgba(0,0,0,0)",
@@ -174,13 +177,14 @@ def render_tacometro(prob: float):
         )
     )
 
+    # Layout compatible con versiones antiguas
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=10, r=10, t=-30, b=0),
         height=260
-        # <- sin 'transition'
     )
+    # Usar objeto Margin (evita errores con dict y márgenes negativos)
+    fig.layout.margin = go.layout.Margin(l=10, r=10, t=0, b=0)
 
     st.markdown('<div class="gauge-card">', unsafe_allow_html=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
