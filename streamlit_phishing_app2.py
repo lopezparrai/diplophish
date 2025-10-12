@@ -123,23 +123,19 @@ st.markdown("""
 html, body, [data-testid="stAppViewContainer"] {
     height: 100%;
 }
+
+/* Centrado vertical y menos espacio arriba */
 .block-container {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;  /* en vez de center, para que comience más arriba */
+    padding-top: 0.5rem !important;  /* menos espacio superior */
+    padding-bottom: 1rem !important;
     min-height: 90vh;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-.block-container {
-    padding-top: 4rem;  /* antes 2rem */
-    padding-bottom: 1rem;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
