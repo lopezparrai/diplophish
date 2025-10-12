@@ -25,15 +25,6 @@ st.markdown("""
 [data-testid="stSidebar"] { display: none !important; }
 .block-container { padding-top: 1.2rem; }
 
-/* Card del tacómetro */
-.gauge-card {
-  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 60%, #eef2f7 100%);
-  border-radius: 18px;
-  box-shadow: 0 8px 24px rgba(30, 42, 70, 0.15), 0 2px 6px rgba(30, 42, 70, 0.08);
-  padding: 18px 18px 8px 18px;
-  border: 1px solid rgba(0,0,0,0.05);
-}
-
 /* Resultado grande */
 .result-banner {
   border-radius: 16px;
