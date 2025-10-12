@@ -1,4 +1,4 @@
-# streamlit_phishing_app.py
+c# streamlit_phishing_app.py
 # ---------------------------------------------------------------
 # Detector de phishing — versión final pulida y minimalista
 # ---------------------------------------------------------------
@@ -90,9 +90,21 @@ div.stButton > button:first-child:active {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 1rem;
+    max-width: 700px;
+    margin: auto;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # ===================== Encabezado =====================
-st.title("🛡️ Detector de sitios sospechosos")
-st.caption("Ingresá una URL para estimar el riesgo de phishing.")
+st.markdown("<h1 style='text-align:center;'>🛡️ Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
+st.caption("Pegá una URL y analizaremos su nivel de riesgo en segundos.")
 
 # ===================== Paths =====================
 MODEL_PATH = Path("models/xgb_phishing.pkl")
@@ -298,7 +310,8 @@ if analizar:
 
 # ===================== Footer breve =====================
 st.markdown("""
-<div class="footer">
-Esta herramienta brinda una estimación automática y no garantiza la legitimidad del sitio.
+<div style='text-align:center; font-size:0.8rem; color:#9ca3af; margin-top:2rem;'>
+⚠️ Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.
 </div>
 """, unsafe_allow_html=True)
+
