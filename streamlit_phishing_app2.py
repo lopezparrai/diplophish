@@ -172,11 +172,19 @@ def render_tacometro(prob: float):
             },
             gauge={
                 "shape": "angular",
-                "axis": {"range":[0,100], "ticks":"", "tickvals":[], "ticktext":[], "tickwidth":0},
-                # barra interna eliminada
+                "axis": {
+                    "range": [0, 100],
+                    "tickwidth": 0,
+                    "ticks": "",
+                    "tickvals": [0, 20, 40, 60, 80, 100],
+                    "ticktext": ["", "", "", "", "", ""],  # sin etiquetas visibles
+                },
                 "bar": {"color": "rgba(0,0,0,0)", "thickness": 0},
-                # “aguja”
-                "threshold": {"line": {"color": "#111", "width": 6}, "thickness": 0.9, "value": pct},
+                "threshold": {
+                    "line": {"color": "#111", "width": 6},
+                    "thickness": 0.9,
+                    "value": pct,
+                },
                 "borderwidth": 0,
                 "bgcolor": "rgba(0,0,0,0)",
                 "steps": make_gradient_steps(n=160, vmin=0, vmax=100),
@@ -185,18 +193,16 @@ def render_tacometro(prob: float):
         )
     )
 
-    # Layout compatible con versiones antiguas
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        height=260
+        height=260,
+        margin=dict(l=0, r=0, t=0, b=0),
     )
-    # Usar objeto Margin (evita errores con dict y márgenes negativos)
-    fig.layout.margin = go.layout.Margin(l=10, r=10, t=0, b=0)
 
-    st.markdown('<div class="gauge-card">', unsafe_allow_html=True)
+    # 🔹 sin <div class="gauge-card"> — tacómetro ocupa todo el espacio
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ===================== Carga artefactos =====================
 try:
