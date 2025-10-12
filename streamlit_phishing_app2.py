@@ -23,12 +23,12 @@ st.set_page_config(page_title="Detector de phishing", page_icon="🛡️", layou
 # ===================== Estilos globales ============================
 st.markdown("""
 <style>
-/* Ocultar sidebar y barras de progreso residuales */
+/* Ocultar sidebar y progress residuales */
 [data-testid="stSidebar"] { display: none !important; }
 div[data-testid="stProgress"] { display:none !important; }
 
-/* Contenedor centrado y con menos espacio arriba */
-html, body, [data-testid="stAppViewContainer"] { height: 100%; }
+/* --- Contenedor --- */
+html, body, [data-testid="stAppViewContainer"] { height: 100%; background-color: white !important; }
 .block-container {
     display: flex;
     flex-direction: column;
@@ -40,34 +40,41 @@ html, body, [data-testid="stAppViewContainer"] { height: 100%; }
     min-height: 90vh;
 }
 
-/* Botón primario "Analizar" (sólido azul + hover/active) */
+/* --- Eliminar el borde gris del formulario --- */
+form[data-testid="stForm"] {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+/* --- Botón Analizar --- */
 div.stButton > button:first-child,
 form button[kind="primary"] {
-    background-color: #2563eb;  /* base */
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    font-size: 1.05rem;
-    font-weight: 700;
-    height: 2.9em;
-    width: 100%;
-    box-shadow: 0 4px 12px rgba(37,99,235,0.20);
-    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, background-color .18s ease;
+    background-color: #2563eb !important;  /* Azul base */
+    color: #fff !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    height: 2.9em !important;
+    width: 100% !important;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.20) !important;
+    transition: all .18s ease-in-out !important;
 }
 div.stButton > button:first-child:hover,
 form button[kind="primary"]:hover {
-    background-color: #1d4ed8;  /* hover */
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(29,78,216,0.30);
-    filter: brightness(1.02);
+    background-color: #1d4ed8 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(29,78,216,0.30) !important;
 }
 div.stButton > button:first-child:active,
 form button[kind="primary"]:active {
-    background-color: #1e3a8a;  /* active */
-    transform: scale(0.99);
+    background-color: #1e3a8a !important;
+    transform: scale(0.99) !important;
 }
 
-/* Banner de resultado */
+/* --- Banner de resultado --- */
 .result-banner {
   border-radius: 16px;
   padding: 18px 24px;
@@ -87,13 +94,7 @@ form button[kind="primary"]:active {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Responsive: móviles */
-@media (max-width: 640px) {
-  .block-container { max-width: 92vw; padding-top: .25rem !important; }
-  form button[kind="primary"] { height: 3.1em; font-size: 1rem; }
-}
-
-/* Footer sutil */
+/* --- Footer sutil --- */
 .footer {
   font-size: 0.78rem;
   color: #9aa3af;
@@ -102,6 +103,7 @@ form button[kind="primary"]:active {
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>Detector de sitios sospechosos</h1>", unsafe_allow_html=True)
