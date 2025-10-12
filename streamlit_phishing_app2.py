@@ -235,37 +235,64 @@ def riesgo_bucket(p: float):
         return "Muy alto", "No hagas clic ni ingreses credenciales; reportalo."
 
 def render_tacometro(prob: float):
-    """Tacómetro verde→rojo usando Plotly."""
+    """Tacómetro verde→rojo moderno con estética suave y aguja."""
     pct = round(prob * 100, 1)
+
+    # Configuración base del gauge
     fig = go.Figure(
         go.Indicator(
-            mode="gauge+number",
+            mode="gauge+number+delta",
             value=pct,
-            number={"suffix": "%", "font": {"size": 36}},
+            number={
+                "suffix": "%",
+                "font": {"size": 40, "color": "black", "family": "Arial Black"},
+            },
+            delta={
+                "reference": 50,
+                "increasing": {"color": "#e74c3c"},
+                "decreasing": {"color": "#1ab744"},
+            },
             gauge={
-                "axis": {"range": [0, 100], "tickwidth": 1, "ticks": ""},
-                "bar": {"color": "black"},
+                "axis": {"range": [0, 100], "tickwidth": 0, "tickcolor": "darkgray"},
+                "bar": {"color": "rgba(0,0,0,0)"},
+                "borderwidth": 0,
                 "steps": [
-                    {"range": [0, 20],  "color": "#1ab744"},  # verde
-                    {"range": [20, 50], "color": "#c9d536"},  # amarillo verdoso
-                    {"range": [50, 80], "color": "#f39c12"},  # naranja
-                    {"range": [80, 100],"color": "#e74c3c"},  # rojo
+                    {"range": [0, 20], "color": "#3D9970"},   # verde oscuro
+                    {"range": [20, 40], "color": "#2ECC40"},  # verde claro
+                    {"range": [40, 60], "color": "#FFDC00"},  # amarillo
+                    {"range": [60, 80], "color": "#FF851B"},  # naranja
+                    {"range": [80, 100], "color": "#FF4136"}, # rojo
                 ],
                 "threshold": {
-                    "line": {"color": "black", "width": 3},
-                    "thickness": 0.75,
+                    "line": {"color": "black", "width": 5},
+                    "thickness": 0.9,
                     "value": pct,
                 },
             },
-            title={"text": "Probabilidad estimada de PHISHING", "font": {"size": 16}},
+            title={
+                "text": "Nivel estimado de riesgo",
+                "font": {"size": 18, "color": "gray", "family": "Arial"},
+            },
             domain={"x": [0, 1], "y": [0, 1]},
         )
     )
+
+    # Layout más atractivo y minimalista
     fig.update_layout(
-        margin=dict(l=10, r=10, t=40, b=10),
-        height=280
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        margin=dict(l=15, r=15, t=30, b=10),
+        height=300,
+        font=dict(color="black", family="Arial"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+
+    fig.update_traces(
+    selector=dict(type='indicator'),
+    gauge={"animation": {"easing": "elastic-in-out", "duration": 800}}
+    )
+    
+    # Mostrar con animación
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 # ---------------------------------------------------------------
 # Lógica principal
