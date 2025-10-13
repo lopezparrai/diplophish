@@ -241,23 +241,23 @@ if scaler is None:
     st.error("Falta el archivo del scaler.")
     st.stop()
 
-# ===================== Interfaz principal (sin st.form) =====================
+# ===================== Interfaz principal (con st.form para soportar ENTER) =====================
+with st.form("analyzer_form", clear_on_submit=False):
+    url_input = st.text_input(
+        "Pegá la URL a analizar:",
+        placeholder="https://www.ejemplo.com",
+        key="url_input"
+    )
 
-url_input = st.text_input(
-    "Pegá la URL a analizar:",
-    placeholder="https://www.ejemplo.com",
-    key="url_input"
-)
+    def es_dominio_simple(texto: str) -> bool:
+        t = texto.strip().lower()
+        if "." not in t:
+            return False
+        t = t.replace("http://", "").replace("https://", "").split("/")[0]
+        return t.replace(".", "").replace("-", "").isalnum() and len(t.split(".")[-1]) >= 2
 
-def es_dominio_simple(texto: str) -> bool:
-    t = texto.strip().lower()
-    if "." not in t:
-        return False
-    t = t.replace("http://", "").replace("https://", "").split("/")[0]
-    return t.replace(".", "").replace("-", "").isalnum() and len(t.split(".")[-1]) >= 2
-
-valido = es_dominio_simple(url_input)
-analizar = st.button("🔍 Analizar", use_container_width=True, disabled=not valido)
+    valido = es_dominio_simple(url_input)
+    analizar = st.form_submit_button("🔍 Analizar", use_container_width=True, disabled=not valido)
 
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
