@@ -107,6 +107,52 @@ form button[kind="primary"]:active {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* 1) Forzar color de tema a azul (afecta todos los botones primarios) */
+:root {
+  --primary-color: #2563eb !important;   /* azul */
+}
+
+/* 2) Anular cualquier gradiente/imagen de fondo del tema */
+button[kind="primary"],
+button[data-testid="baseButton-primary"],
+div[data-testid="stFormSubmitButton"] button,
+div.stButton > button:first-child {
+  background-color: #2563eb !important;
+  background: #2563eb !important;
+  background-image: none !important;   /* <-- clave para quitar el rojo del tema */
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(37,99,235,0.20) !important;
+  transition: all .18s ease-in-out !important;
+}
+
+button[kind="primary"]:hover,
+button[data-testid="baseButton-primary"]:hover,
+div[data-testid="stFormSubmitButton"] button:hover,
+div.stButton > button:first-child:hover {
+  background-color: #1d4ed8 !important;
+  background-image: none !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(29,78,216,0.30) !important;
+}
+
+button[kind="primary"]:active,
+button[data-testid="baseButton-primary"]:active,
+div[data-testid="stFormSubmitButton"] button:active,
+div.stButton > button:first-child:active {
+  background-color: #1e3a8a !important;
+  background-image: none !important;
+  transform: scale(0.99) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>¿Es phishing o no?</h1>", unsafe_allow_html=True)
 
