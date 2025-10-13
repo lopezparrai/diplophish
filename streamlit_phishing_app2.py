@@ -243,30 +243,21 @@ if scaler is None:
 
 # ===================== Interfaz principal (sin st.form) =====================
 
-# --- Soporte para presionar ENTER y ejecutar ---
-def _trigger_submit():
-    st.session_state["submit_requested"] = True
-
 url_input = st.text_input(
     "Pegá la URL a analizar:",
     placeholder="https://www.ejemplo.com",
-    key="url_input",
-    on_change=_trigger_submit
+    key="url_input"
 )
 
-# --- Validación mínima ---
 def es_dominio_simple(texto: str) -> bool:
     t = texto.strip().lower()
-    if "." not in t:  # necesita al menos un punto
+    if "." not in t:
         return False
     t = t.replace("http://", "").replace("https://", "").split("/")[0]
     return t.replace(".", "").replace("-", "").isalnum() and len(t.split(".")[-1]) >= 2
 
 valido = es_dominio_simple(url_input)
-analizar_click = st.button("🔍 Analizar", use_container_width=True, disabled=not valido)
-analizar_enter = bool(st.session_state.get("submit_requested", False) and valido)
-analizar = analizar_click or analizar_enter
-st.session_state["submit_requested"] = False
+analizar = st.button("🔍 Analizar", use_container_width=True, disabled=not valido)
 
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
