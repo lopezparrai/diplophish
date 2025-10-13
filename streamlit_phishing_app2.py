@@ -107,6 +107,41 @@ form button[kind="primary"]:active {
 </style>
 """, unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* Forzar color azul del botón Analizar incluso si el tema es rojo */
+div.stButton > button:first-child,
+form button,
+form button[kind="primary"] {
+    background-color: #2563eb !important;   /* azul */
+    color: white !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.25) !important;
+    transition: all .2s ease-in-out !important;
+}
+div.stButton > button:first-child:hover,
+form button:hover,
+form button[kind="primary"]:hover {
+    background-color: #1d4ed8 !important;   /* azul más oscuro */
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(29,78,216,0.35);
+}
+div.stButton > button:first-child:active,
+form button:active,
+form button[kind="primary"]:active {
+    background-color: #1e3a8a !important;   /* azul profundo */
+    transform: scale(0.99);
+}
+
+/* Desactivar colores de tema Streamlit */
+button[data-testid="baseButton-primary"] {
+    background-color: #2563eb !important;
+    color: white !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ===================== Encabezado =====================
 st.markdown("<h1 style='text-align:center;'>¿Es phishing o no?</h1>", unsafe_allow_html=True)
