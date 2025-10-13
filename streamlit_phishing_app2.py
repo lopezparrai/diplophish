@@ -241,37 +241,6 @@ if scaler is None:
     st.error("Falta el archivo del scaler.")
     st.stop()
 
-# ===================== Interfaz principal (con st.form para soportar ENTER) =====================
-with st.form("analyzer_form", clear_on_submit=False):
-    url_input = st.text_input(
-        "Pegá la URL a analizar:",
-        placeholder="https://www.ejemplo.com",
-        key="url_input"
-    )
-
-    def es_dominio_simple(texto: str) -> bool:
-        t = texto.strip().lower()
-        if "." not in t:
-            return False
-        t = t.replace("http://", "").replace("https://", "").split("/")[0]
-        return t.replace(".", "").replace("-", "").isalnum() and len(t.split(".")[-1]) >= 2
-
-    valido = es_dominio_simple(url_input)
-    analizar = st.form_submit_button("🔍 Analizar", type="primary", use_container_width=True)
-
-# ===================== Evento de análisis =====================
-if analizar:
-    if not url_input.strip():
-        st.warning("Ingresá una URL.")
-    elif not valido:
-        st.warning("Ingresá un dominio/URL válido (ej.: ejemplo.com o https://ejemplo.com).")
-    else:
-        dominio = normalize_to_domain(url_input)
-        if not dominio:
-            st.warning("No se pudo interpretar la entrada como dominio/URL.")
-        else:
-            predict_and_show(dominio)
-
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
     with st.spinner("Analizando…"):
@@ -308,6 +277,37 @@ def predict_and_show(dominio: str):
         st.markdown('<div class="result-banner result-alert">PHISHING</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="result-banner result-ok">NO PHISHING</div>', unsafe_allow_html=True)
+
+# ===================== Interfaz principal (con st.form para soportar ENTER) =====================
+with st.form("analyzer_form", clear_on_submit=False):
+    url_input = st.text_input(
+        "Pegá la URL a analizar:",
+        placeholder="https://www.ejemplo.com",
+        key="url_input"
+    )
+
+    def es_dominio_simple(texto: str) -> bool:
+        t = texto.strip().lower()
+        if "." not in t:
+            return False
+        t = t.replace("http://", "").replace("https://", "").split("/")[0]
+        return t.replace(".", "").replace("-", "").isalnum() and len(t.split(".")[-1]) >= 2
+
+    valido = es_dominio_simple(url_input)
+    analizar = st.form_submit_button("🔍 Analizar", type="primary", use_container_width=True)
+
+# ===================== Evento de análisis =====================
+if analizar:
+    if not url_input.strip():
+        st.warning("Ingresá una URL.")
+    elif not valido:
+        st.warning("Ingresá un dominio/URL válido (ej.: ejemplo.com o https://ejemplo.com).")
+    else:
+        dominio = normalize_to_domain(url_input)
+        if not dominio:
+            st.warning("No se pudo interpretar la entrada como dominio/URL.")
+        else:
+            predict_and_show(dominio)
 
 # ===================== Footer =====================
 st.markdown("<div class='footer'>DiploDatos 2025 — Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.</div>", unsafe_allow_html=True)
