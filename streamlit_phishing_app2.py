@@ -50,6 +50,7 @@ form[data-testid="stForm"] {
 
 /* --- Botón Analizar --- */
 div.stButton > button:first-child,
+form button,
 form button[kind="primary"] {
     background-color: #2563eb !important;  /* Azul base */
     color: #fff !important;
@@ -63,12 +64,14 @@ form button[kind="primary"] {
     transition: all .18s ease-in-out !important;
 }
 div.stButton > button:first-child:hover,
+form button:hover,
 form button[kind="primary"]:hover {
     background-color: #1d4ed8 !important;
     transform: translateY(-1px) !important;
     box-shadow: 0 6px 20px rgba(29,78,216,0.30) !important;
 }
 div.stButton > button:first-child:active,
+form button:active,
 form button[kind="primary"]:active {
     background-color: #1e3a8a !important;
     transform: scale(0.99) !important;
