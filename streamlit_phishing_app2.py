@@ -257,7 +257,20 @@ with st.form("analyzer_form", clear_on_submit=False):
         return t.replace(".", "").replace("-", "").isalnum() and len(t.split(".")[-1]) >= 2
 
     valido = es_dominio_simple(url_input)
-    analizar = st.form_submit_button("🔍 Analizar", use_container_width=True, disabled=not valido)
+    analizar = st.form_submit_button("🔍 Analizar", type="primary", use_container_width=True)
+
+# ===================== Evento de análisis =====================
+if analizar:
+    if not url_input.strip():
+        st.warning("Ingresá una URL.")
+    elif not valido:
+        st.warning("Ingresá un dominio/URL válido (ej.: ejemplo.com o https://ejemplo.com).")
+    else:
+        dominio = normalize_to_domain(url_input)
+        if not dominio:
+            st.warning("No se pudo interpretar la entrada como dominio/URL.")
+        else:
+            predict_and_show(dominio)
 
 # ===================== Predicción =====================
 def predict_and_show(dominio: str):
@@ -295,17 +308,6 @@ def predict_and_show(dominio: str):
         st.markdown('<div class="result-banner result-alert">PHISHING</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="result-banner result-ok">NO PHISHING</div>', unsafe_allow_html=True)
-
-# ===================== Evento de análisis =====================
-if analizar:
-    if not url_input.strip():
-        st.warning("Ingresá una URL válida:")
-    else:
-        dominio = normalize_to_domain(url_input)
-        if not dominio:
-            st.warning("No se pudo interpretar la entrada como dominio/URL.")
-        else:
-            predict_and_show(dominio)
 
 # ===================== Footer =====================
 st.markdown("<div class='footer'>DiploDatos 2025 — Esta herramienta realiza una estimación automática y no garantiza la legitimidad del sitio.</div>", unsafe_allow_html=True)
