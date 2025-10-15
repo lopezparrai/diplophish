@@ -255,6 +255,19 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
     path = parsed_final.path or ""
     query = parsed_final.query or ""
 
+        # --- Cálculo robusto de subdominios y presencia del dominio en el path ---
+    # Usamos el registrable final (no el input) y marcamos subdominio real distinto de "" y "www"
+    final_ext = tldextract.extract(parsed_final.netloc or "")
+    final_reg = final_ext.registered_domain  # p.ej. "arca.gob.ar"
+    final_sub = final_ext.subdomain          # p.ej. "", "www", "mi"
+    domain_in_subdomains = 1.0 if final_sub not in ("", None, "www") else 0.0
+    
+    # Dominio "base" (label antes del TLD registrable), ej. "arca" en "arca.gob.ar"
+    base_label = final_reg.split(".")[0] if final_reg else ""
+    
+    # ¿Aparece el label base en la ruta? (heurística que ya usabas)
+    domain_in_paths = 1.0 if (base_label and base_label in path) else 0.0
+
     # 5) Señales HTML y de formularios
     iframe_present = False
     insecure_forms = False
