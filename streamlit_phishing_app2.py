@@ -283,25 +283,23 @@ def bucket_for(pct: float):
     Devuelve (titulo, consejo, bg, fg, border) según el % de riesgo.
     Colores suaves para no alarmar pero marcar diferencia.
     """
-    if pct < 33:
+    if pct < 30:
         return (
-            "Muy bajo riesgo",
+            "RIESGO BAJO",
             "No se detectaron señales claras de phishing. Podés navegar con normalidad.",
             "#e8f7ef", "#0f5132", "#badbcc",   # verde suave
         )
-    if pct < 66:
+    if pct < 70:
         return (
-            "Riesgo moderado",
+            "RIESGO MODERADO",
             "Se observan varias señales. No ingreses información personal y verificá la legitimidad del sitio.",
             "#fff7e6", "#7a4b0b", "#ffe5b4",   # naranja/ámbar suave
         )
     return (
-        "Alto riesgo",
+        "RIESGO ALTO",
         "Probable fraude. No ingreses datos. Cerrá la pestaña y reportá el enlace a la entidad oficial.",
         "#fdecea", "#842029", "#f5c2c7",     # rojo suave
     )
-
-
 
 # ===================== Cargar artefactos =====================
 try:
