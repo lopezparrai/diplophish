@@ -352,9 +352,6 @@ def predict_and_show(dominio: str):
         ">
           <div style="font-size:1.35rem; font-weight:900; letter-spacing:.2px;">{title}</div>
           <div style="font-size:1.05rem; margin-top:6px;">
-            Probabilidad estimada: <strong>{pct}%</strong>
-          </div>
-          <div style="margin-top:10px; font-size:.96rem;">
             {advice}
           </div>
         </div>
