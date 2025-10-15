@@ -255,17 +255,15 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
     path = parsed_final.path or ""
     query = parsed_final.query or ""
 
-        # --- Cálculo robusto de subdominios y presencia del dominio en el path ---
+    # --- Cálculo robusto de subdominios y presencia del dominio en el path ---
     # Usamos el registrable final (no el input) y marcamos subdominio real distinto de "" y "www"
     final_ext = tldextract.extract(parsed_final.netloc or "")
     final_reg = final_ext.registered_domain  # p.ej. "arca.gob.ar"
     final_sub = final_ext.subdomain          # p.ej. "", "www", "mi"
     domain_in_subdomains = 1.0 if final_sub not in ("", None, "www") else 0.0
-    
+
     # Dominio "base" (label antes del TLD registrable), ej. "arca" en "arca.gob.ar"
     base_label = final_reg.split(".")[0] if final_reg else ""
-    
-    # ¿Aparece el label base en la ruta? (heurística que ya usabas)
     domain_in_paths = 1.0 if (base_label and base_label in path) else 0.0
 
     # 5) Señales HTML y de formularios
@@ -278,8 +276,8 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
         iframe_present = bool(soup.find("iframe"))
         forms = soup.find_all("form")
 
-        # comparar dominios registrables para evitar falsos positivos por 'www.'
-        base_reg = tldextract.extract(dominio).registered_domain
+        # comparar contra el registrable del HOST FINAL (evita falsos con www/apex)
+        base_reg = final_reg
         for form in forms:
             action = (form.get("action") or "").strip().lower()
 
@@ -333,16 +331,8 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
     embedded_brand_name = any(brand in dominio_lower for brand in marcas_populares)
 
     # evitar flags engañosos
-    https_in_hostname = False
-    random_string = bool(re.search(r"[a-z]{5,}\d{3,}|[0-9]{5,}", dominio_lower))
-
-    base_label = (tldextract.extract(dominio).domain or "")
-    domain_in_subdomains = False
-    domain_in_paths = False
-    if parsed_final.netloc:
-        domain_in_subdomains = bool(base_label and base_label in parsed_final.netloc and parsed_final.netloc != dominio)
-    if parsed_final.path:
-        domain_in_paths = bool(base_label and base_label in parsed_final.path)
+    https_in_hostname = 0.0
+    random_string = 1.0 if re.search(r"[a-z]{5,}\d{3,}|[0-9]{5,}", dominio_lower) else 0.0
 
     categoria = clasificar_categoria(titulo or dominio)
 
@@ -364,25 +354,23 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
         # Contenido
         "title": titulo,
         "title_length": longitud_titulo,
-        "meta_keywords": "",  # opcional: podés parsear como antes si lo usás
+        "meta_keywords": "",  # opcional
         "category": categoria,
 
         # Indicadores engañosos
-        "random_string": 1.0 if random_string else 0.0,
+        "random_string": random_string,
         "sensitive_words_count": float(sensitive_words_count),
         "embedded_brand_name": 1.0 if embedded_brand_name else 0.0,
-        "https_in_hostname": 1.0 if https_in_hostname else 0.0,
-        "domain_in_subdomains": 1.0 if domain_in_subdomains else 0.0,
-        "domain_in_paths": 1.0 if domain_in_paths else 0.0,
+        "https_in_hostname": https_in_hostname,
+        "domain_in_subdomains": domain_in_subdomains,
+        "domain_in_paths": domain_in_paths,
 
         # Longitudes derivadas de canónica
-        "path_segments": float(len([p for p in path.split("/") if p])),
+        "path_segments": float(len([p for p in path.split('/') if p])),
         "path_length": float(len(path)),
         "query_length": float(len(query)),
-        # Doble slash en PATH de la canónica
         "double_slash_in_path": 1.0 if ("//" in path and not path.startswith("//")) else 0.0,
     }
-
 
 # ============================================================
 # =============  Clasificación temática simple  ==============
