@@ -1,3 +1,6 @@
+# features.py
+from __future__ import annotations
+
 import re
 import ssl
 import time
@@ -9,17 +12,74 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from dateutil import parser
 from urllib.parse import urlparse
+from functools import lru_cache
+from typing import Dict, Tuple, Optional
 
-def procesar_dominio_basico(dominio: str) -> dict:
-    """
-    Procesa información básica y WHOIS de un dominio, generando las features correspondientes.
-    """
+# -------- Config de red --------
+DEFAULT_TIMEOUT = 6.0
+DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (phishing-checker)"}
 
+
+def _safe_get(url: str, timeout: float = DEFAULT_TIMEOUT) -> Optional[requests.Response]:
+    """GET con headers y timeouts; None si hay error."""
+    try:
+        return requests.get(url, timeout=timeout, allow_redirects=True, headers=DEFAULT_HEADERS)
+    except requests.exceptions.RequestException:
+        return None
+
+
+@lru_cache(maxsize=256)
+def resolve_canonical_url(dominio: str) -> Tuple[Optional[str], int, bool, bool]:
+    """
+    Devuelve (final_url, status_code, has_https, responds)
+    Prueba variantes comunes (prioriza HTTPS) y sigue redirects.
+    Unifica 'apex' y 'www' para evitar divergencias de features.
+    """
+    d = (dominio or "").strip().lower()
+    if d.startswith("www."):
+        d = d[4:]
+
+    candidates = [
+        f"https://{d}",
+        f"http://{d}",
+        f"https://www.{d}",
+        f"http://www.{d}",
+    ]
+
+    # 1) Devolver la primera 2xx/3xx
+    for u in candidates:
+        r = _safe_get(u)
+        if r and (200 <= r.status_code < 400):
+            final_url = str(r.url)
+            return final_url, int(r.status_code), final_url.startswith("https://"), True
+
+    # 2) Si nada 2xx/3xx, quedarnos con "lo mejor" que respondió
+    best = None
+    for u in candidates:
+        r = _safe_get(u)
+        if r and (best is None or r.status_code < best.status_code):
+            best = r
+    if best:
+        final_url = str(best.url)
+        return final_url, int(best.status_code), final_url.startswith("https://"), False
+
+    return None, 0, False, False
+
+
+# ============================================================
+# ===============  Features BASE (sin red)  ==================
+# ============================================================
+def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
+    """
+    Procesa información estática (sintaxis de URL) y WHOIS del dominio.
+    No hace requests HTML (para eso está enriquecer_dominio_scraping).
+    """
+    # Normalizar a host
     url = f"http://{dominio}"
     parsed = urlparse(url)
     hostname = parsed.hostname or dominio
 
-    # --- Métricas estáticas de la URL ---
+    # --- Métricas sintácticas de la URL/host ---
     url_length = len(url)
     num_dashes = dominio.count('-')
     num_digits = sum(c.isdigit() for c in dominio)
@@ -27,18 +87,21 @@ def procesar_dominio_basico(dominio: str) -> dict:
     num_dots = dominio.count('.')
     num_underscores = dominio.count('_')
     num_dashes_in_hostname = hostname.count('-')
-    double_slash_in_path = '//' in parsed.path if parsed.path else False
-
-    path_segments = len(parsed.path.strip('/').split('/')) if parsed.path else 0
     hostname_length = len(hostname)
-    path_length = len(parsed.path)
-    query_length = len(parsed.query)
 
-    # --- Extraer TLD ---
+    # Como no estamos resolviendo aquí, path/query vendrán vacíos
+    path = parsed.path or ""
+    query = parsed.query or ""
+    path_segments = len([p for p in path.strip('/').split('/') if p]) if path else 0
+    path_length = len(path)
+    query_length = len(query)
+    double_slash_in_path = bool(re.search(r"//", path)) if path else False
+
+    # --- TLD ---
     ext = tldextract.extract(dominio)
     tld = ext.suffix
 
-    # --- WHOIS ---
+    # --- WHOIS (con timeouts) ---
     creation_date_iso = None
     expiration_date_iso = None
     registrar = None
@@ -48,35 +111,31 @@ def procesar_dominio_basico(dominio: str) -> dict:
     registration_time = None
 
     try:
-        socket.setdefaulttimeout(5)  # evitar bloqueos WHOIS
+        socket.setdefaulttimeout(5)  # evitar bloqueos en WHOIS
         info_whois = whois.whois(dominio)
 
-        # Normalizar fechas
         creation = info_whois.creation_date
         expiration = info_whois.expiration_date
 
-        if isinstance(creation, list):
+        if isinstance(creation, list) and creation:
             creation = creation[0]
-        if isinstance(expiration, list):
+        if isinstance(expiration, list) and expiration:
             expiration = expiration[0]
 
-        # Convertir strings a datetime
         if isinstance(creation, str):
             try:
                 creation = parser.parse(creation)
-            except:
+            except Exception:
                 creation = None
         if isinstance(expiration, str):
             try:
                 expiration = parser.parse(expiration)
-            except:
+            except Exception:
                 expiration = None
 
-        # Guardar en ISO si disponibles
         creation_date_iso = creation.isoformat() if creation else None
         expiration_date_iso = expiration.isoformat() if expiration else None
 
-        # Calcular métricas temporales
         if creation:
             site_age_years = round((datetime.now() - creation).days / 365, 2)
         if expiration:
@@ -84,230 +143,251 @@ def procesar_dominio_basico(dominio: str) -> dict:
         if creation and expiration:
             registration_time = round((expiration - creation).days / 365, 2)
 
-        registrar = info_whois.registrar
-        country_registered = (
-            info_whois.get("country") or
-            info_whois.get("registrant_country") or
-            "Desconocido"
-        )
+        registrar = getattr(info_whois, "registrar", None)
+        # Algunos whois devuelven dict-like
+        try:
+            country_registered = (
+                info_whois.get("country")
+                or info_whois.get("registrant_country")
+                or getattr(info_whois, "country", None)
+                or "Desconocido"
+            )
+        except Exception:
+            country_registered = getattr(info_whois, "country", "Desconocido")
     except Exception:
         pass
 
-    # --- Flag si está registrado en Argentina ---
-    is_registered_in_ar = bool(country_registered and "argentina" in country_registered.lower())
+    is_registered_in_ar = bool(country_registered and "argentina" in str(country_registered).lower())
 
     return {
-        # Identificación
+        # Identificación (pueden no estar en feature_order; no molesta)
         "url": url,
         "tld": tld,
-        "is_phishing": None,  # Placeholder para etiquetado posterior
 
-        # Estructura URL
-        "url_length": url_length,
-        "num_dashes": num_dashes,
-        "num_digits": num_digits,
-        "num_special_chars": num_special_chars,
-        "path_segments": path_segments,
-        "num_dots": num_dots,
-        "num_underscores": num_underscores,
-        "num_dashes_in_hostname": num_dashes_in_hostname,
-        "double_slash_in_path": double_slash_in_path,
-        "hostname_length": hostname_length,
-        "path_length": path_length,
-        "query_length": query_length,
+        # Estructura URL/host
+        "url_length": float(url_length),
+        "num_dashes": float(num_dashes),
+        "num_digits": float(num_digits),
+        "num_special_chars": float(num_special_chars),
+        "path_segments": float(path_segments),
+        "num_dots": float(num_dots),
+        "num_underscores": float(num_underscores),
+        "num_dashes_in_hostname": float(num_dashes_in_hostname),
+        "double_slash_in_path": 1.0 if double_slash_in_path else 0.0,
+        "hostname_length": float(hostname_length),
+        "path_length": float(path_length),
+        "query_length": float(query_length),
 
-        # WHOIS y temporalidad
-        "registration_time": registration_time,
+        # WHOIS y temporalidad (si tu scaler/modelo no los usa, no pasa nada)
+        "registration_time": float(registration_time) if registration_time is not None else None,
         "creation_date": creation_date_iso,
         "expiration_date": expiration_date_iso,
-        "site_age_years": site_age_years,
-        "time_to_expire_years": time_to_expire_years,
+        "site_age_years": float(site_age_years) if site_age_years is not None else None,
+        "time_to_expire_years": float(time_to_expire_years) if time_to_expire_years is not None else None,
         "registrar": registrar,
         "country_registered": country_registered,
-        "is_registered_in_ar": is_registered_in_ar
+        "is_registered_in_ar": 1.0 if is_registered_in_ar else 0.0,
+
+        # Placeholders que se pisan con scraping
+        "title_length": 0.0,
+        "http_status_code": 0.0,
+        "has_https": 0.0,
+        "has_ssl_cert": 0.0,
+        "iframe_present": 0.0,
+        "insecure_forms": 0.0,
+        "submit_info_to_email": 0.0,
+        "abnormal_form_action": 0.0,
+        "responds": 0.0,
+        "response_time": None,
+        "sensitive_words_count": 0.0,
     }
 
 
+# ============================================================
+# ===========  Features DINÁMICAS (con red)  =================
+# ============================================================
+def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
+    """
+    Usa una URL canónica (apex/www unificados) para medir señales de red/HTML.
+    Con esto, 'dominio' y 'www.dominio' producirán features consistentes.
+    """
+    # 1) Resolver canónica (apex/www) y seguir redirects
+    final_url, status_code, has_https, responds = resolve_canonical_url(dominio)
 
-def enriquecer_dominio_scraping(dominio: str) -> dict:
-    """
-    Obtiene datos dinámicos del sitio mediante requests y análisis HTML.
-    """
-    esquemas = ["https", "http"]
     titulo = ""
     tiempo_respuesta = None
-    responde = False
-    codigo_estado = None
-    url_redireccionada = None
-    tiene_https = False
+    url_redireccionada = final_url
     tiene_ssl = False
-    meta_keywords = ""
+    html_text = ""
+
+    # 2) Descargar el HTML de la URL canónica (si existe)
+    if final_url:
+        t0 = time.time()
+        r = _safe_get(final_url)
+        t1 = time.time()
+        if r is not None:
+            tiempo_respuesta = round(t1 - t0, 3)
+            html_text = r.text or ""
+            status_code = int(r.status_code)
+            url_redireccionada = str(r.url)
+
+    # 3) Chequeo de SSL (sólo si la canónica es HTTPS)
+    if final_url and has_https:
+        try:
+            host = urlparse(final_url).hostname
+            if host:
+                context = ssl.create_default_context()
+                with socket.create_connection((host, 443), timeout=5) as sock:
+                    with context.wrap_socket(sock, server_hostname=host) as ssock:
+                        tiene_ssl = bool(ssock.getpeercert())
+        except Exception:
+            pass
+
+    # 4) Parse HTML
+    soup = BeautifulSoup(html_text, "html.parser") if html_text else None
+    if soup:
+        t = soup.find("title")
+        if t:
+            titulo = (t.text or "").strip()
+
+    longitud_titulo = float(len(titulo))
+    parsed_final = urlparse(url_redireccionada or (final_url or ""))
+    path = parsed_final.path or ""
+    query = parsed_final.query or ""
+
+    # 5) Señales HTML y de formularios
     iframe_present = False
     insecure_forms = False
     submit_info_to_email = False
     abnormal_form_action = False
-    html_text = ""
 
-    for esquema in esquemas:
-        try:
-            url = f"{esquema}://{dominio}"
-            inicio = time.time()
-            r = requests.get(url, timeout=6, allow_redirects=True, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/117.0 Safari/537.36"
-            })
-            fin = time.time()
-
-            tiempo_respuesta = round(fin - inicio, 3)
-            responde = True
-            codigo_estado = r.status_code
-            url_redireccionada = r.url
-            html_text = r.text
-
-            soup = BeautifulSoup(html_text, "html.parser")
-            titulo_tag = soup.find("title")
-            if titulo_tag:
-                titulo = titulo_tag.text.strip()
-            if esquema == "https":
-                tiene_https = True
-            break
-        except requests.exceptions.RequestException:
-            continue
-
-    soup = BeautifulSoup(html_text, "html.parser") if html_text else None
-
-    # --- Title y meta keywords ---
-    longitud_titulo = len(titulo)
-    if soup:
-        meta_tag = soup.find("meta", attrs={"name": "keywords"})
-        if meta_tag and "content" in meta_tag.attrs:
-            meta_keywords = meta_tag["content"].lower()
-
-    # --- SSL check ---
-    if tiene_https:
-        try:
-            hostname = urlparse(url).hostname
-            context = ssl.create_default_context()
-            with socket.create_connection((hostname, 443), timeout=5) as sock:
-                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    tiene_ssl = bool(ssock.getpeercert())
-        except:
-            pass
-
-    # --- Analizar HTML para iframes y forms ---
     if soup:
         iframe_present = bool(soup.find("iframe"))
         forms = soup.find_all("form")
+
+        # comparar dominios registrables para evitar falsos positivos por 'www.'
+        base_reg = tldextract.extract(dominio).registered_domain
         for form in forms:
-            action = form.get("action", "").lower()
-            if not action or action.startswith("http://"):
+            action = (form.get("action") or "").strip().lower()
+
+            # action vacío/fragmento → inseguro
+            if not action or action.startswith("#") or action.startswith("?"):
                 insecure_forms = True
+                continue
+
             if "mailto:" in action:
                 submit_info_to_email = True
-            # Acción que apunta a otro dominio
-            if action.startswith("http"):
-                action_host = urlparse(action).hostname
-                if action_host and not action_host.endswith(dominio):
+
+            if not action.startswith(("http://", "https://")):
+                # relativo: inseguro si el sitio NO es https
+                if not has_https:
+                    insecure_forms = True
+            else:
+                # absoluto http en sitio https → inseguro
+                if has_https and action.startswith("http://"):
+                    insecure_forms = True
+                # acción a otro registrable → abnormal
+                try:
+                    a_host = urlparse(action).hostname or ""
+                    a_reg = tldextract.extract(a_host).registered_domain
+                    if a_reg and base_reg and a_reg != base_reg:
+                        abnormal_form_action = True
+                except Exception:
                     abnormal_form_action = True
 
-    # --- Indicadores engañosos ---
-    sensitive_words = ["login", "secure", "account", "bank", "verify", "update"]
-    sensitive_words_count = sum(titulo.lower().count(word) for word in sensitive_words)
-    https_in_hostname = "https" in dominio
-    random_string = bool(re.search(r"[a-z]{5,}\d{3,}|[0-9]{5,}", dominio))
+    # 6) Indicadores engañosos (en el título / dominio)
+    sensitive_words = [
+        "login", "secure", "account", "bank", "verify", "update",
+        "contraseña", "tarjeta", "seguridad", "verificación"
+    ]
+    sensitive_words_count = sum((titulo or "").lower().count(w) for w in sensitive_words)
 
+    dominio_lower = (dominio or "").lower()
     bancos = [
         "santander", "bbva", "galicia", "banco nación", "bna", "hipotecario", "provincia",
         "macro", "comafi", "brubank", "itau", "supervielle", "patagonia"
     ]
     entidades_publicas = [
         "afip", "anses", "anmat", "ministerio", "gobierno", "municipio", "secretaria", "renaper",
-        "dgr", "dine", "senado", "diputados", "presidencia"
+        "dgr", "dine", "senado", "diputados", "presidencia", "arca"
     ]
-    redes_sociales = [
-        "facebook", "instagram", "twitter", "whatsapp", "tiktok", "linkedin", "telegram", "snapchat"
-    ]
+    redes_sociales = ["facebook", "instagram", "twitter", "whatsapp", "tiktok", "linkedin", "telegram", "snapchat"]
     empresas_y_servicios = [
-        "mercadolibre", "mercadopago", "despegar", "globant", "tenaris", "ypf", "rappi", "pedidosya",
-        "todoPago", "naranja", "ripley", "uala", "plin", "cencosud"
+        "mercadolibre", "mercadopago", "despegar", "globant", "tenaris", "ypf",
+        "rappi", "pedidosya", "todopago", "naranja", "uala", "plin", "cencosud"
     ]
-    # Unificar listas y normalizar dominio
     marcas_populares = bancos + entidades_publicas + redes_sociales + empresas_y_servicios
-    dominio_lower = dominio.lower()
+    embedded_brand_name = any(brand in dominio_lower for brand in marcas_populares)
 
-    embedded_brand_name = any(brand.lower() in dominio_lower for brand in marcas_populares)
+    # evitar flags engañosos
+    https_in_hostname = False
+    random_string = bool(re.search(r"[a-z]{5,}\d{3,}|[0-9]{5,}", dominio_lower))
 
+    base_label = (tldextract.extract(dominio).domain or "")
     domain_in_subdomains = False
     domain_in_paths = False
-    parsed_url = urlparse(url_redireccionada or url)
-    base_domain = dominio.split(".")[0]
-    if base_domain in parsed_url.netloc and parsed_url.netloc != dominio:
-        domain_in_subdomains = True
-    if base_domain in parsed_url.path:
-        domain_in_paths = True
+    if parsed_final.netloc:
+        domain_in_subdomains = bool(base_label and base_label in parsed_final.netloc and parsed_final.netloc != dominio)
+    if parsed_final.path:
+        domain_in_paths = bool(base_label and base_label in parsed_final.path)
 
     categoria = clasificar_categoria(titulo or dominio)
 
     return {
         # Seguridad
-        "has_https": tiene_https,
-        "has_ssl_cert": tiene_ssl,
-        "iframe_present": iframe_present,
-        "insecure_forms": insecure_forms,
-        "submit_info_to_email": submit_info_to_email,
-        "abnormal_form_action": abnormal_form_action,
+        "has_https": 1.0 if has_https else 0.0,
+        "has_ssl_cert": 1.0 if tiene_ssl else 0.0,
+        "iframe_present": 1.0 if iframe_present else 0.0,
+        "insecure_forms": 1.0 if insecure_forms else 0.0,
+        "submit_info_to_email": 1.0 if submit_info_to_email else 0.0,
+        "abnormal_form_action": 1.0 if abnormal_form_action else 0.0,
 
         # Respuesta servidor
-        "response_time": tiempo_respuesta,
-        "responds": responde,
-        "http_status_code": codigo_estado,
+        "response_time": float(tiempo_respuesta) if tiempo_respuesta is not None else None,
+        "responds": 1.0 if responds else 0.0,
+        "http_status_code": float(status_code or 0),
         "redirected_url": url_redireccionada,
 
         # Contenido
         "title": titulo,
         "title_length": longitud_titulo,
-        "meta_keywords": meta_keywords,
+        "meta_keywords": "",  # opcional: podés parsear como antes si lo usás
         "category": categoria,
 
         # Indicadores engañosos
-        "random_string": random_string,
-        "sensitive_words_count": sensitive_words_count,
-        "embedded_brand_name": embedded_brand_name,
-        "https_in_hostname": https_in_hostname,
-        "domain_in_subdomains": domain_in_subdomains,
-        "domain_in_paths": domain_in_paths
+        "random_string": 1.0 if random_string else 0.0,
+        "sensitive_words_count": float(sensitive_words_count),
+        "embedded_brand_name": 1.0 if embedded_brand_name else 0.0,
+        "https_in_hostname": 1.0 if https_in_hostname else 0.0,
+        "domain_in_subdomains": 1.0 if domain_in_subdomains else 0.0,
+        "domain_in_paths": 1.0 if domain_in_paths else 0.0,
+
+        # Longitudes derivadas de canónica
+        "path_segments": float(len([p for p in path.split("/") if p])),
+        "path_length": float(len(path)),
+        "query_length": float(len(query)),
+        # Doble slash en PATH de la canónica
+        "double_slash_in_path": 1.0 if ("//" in path and not path.startswith("//")) else 0.0,
     }
 
-def clasificar_categoria(dominio):
+
+# ============================================================
+# =============  Clasificación temática simple  ==============
+# ============================================================
+def clasificar_categoria(texto_o_dominio: str) -> str:
     """
-    Clasifica un dominio web en una categoría temática general según palabras clave presentes.
-
-    Esta función busca términos genéricos en el nombre del dominio para asignarle una categoría
-    temática amplia como "noticias", "gobierno", "banca", "e-commerce" o "educacion". Si no
-    encuentra coincidencias, clasifica el dominio como "otro".
-
-    Args:
-        dominio (str): Nombre de dominio (por ejemplo, "noticiasargentinas.com.ar").
-
-    Returns:
-        str: Categoría general a la que pertenece el dominio. Puede ser:
-            - "noticias"
-            - "gobierno"
-            - "banca"
-            - "e-commerce"
-            - "educacion"
-            - "otro"
+    Clasifica en categorías amplias según palabras clave en título/dominio.
     """
-    dominio = dominio.lower()
+    d = (texto_o_dominio or "").lower()
 
-    if any(x in dominio for x in ["news", "noticia", "diario", "prensa", "periodico", "press"]):
+    if any(x in d for x in ["news", "noticia", "diario", "prensa", "periodico", "press"]):
         return "noticias"
-    elif any(x in dominio for x in ["gob", "gov", "municipio", "ministerio", "provincia", ".gob.", ".gov."]):
+    if any(x in d for x in ["gob", "gov", "municipio", "ministerio", "provincia", ".gob.", ".gov."]):
         return "gobierno"
-    elif any(x in dominio for x in ["banco", "bank", "finance", "finanzas", "credito", "loan", "tarjeta"]):
+    if any(x in d for x in ["banco", "bank", "finance", "finanzas", "credito", "loan", "tarjeta"]):
         return "banca"
-    elif any(x in dominio for x in ["shop", "store", "tienda", "ecommerce", "comprar", "venta", "oferta"]):
+    if any(x in d for x in ["shop", "store", "tienda", "ecommerce", "comprar", "venta", "oferta"]):
         return "e-commerce"
-    elif any(x in dominio for x in ["edu", "universidad", "facultad", "campus", "colegio", "escuela", "instituto"]):
+    if any(x in d for x in ["edu", "universidad", "facultad", "campus", "colegio", "escuela", "instituto"]):
         return "educacion"
-    else:
-        return "otro"
+    return "otro"
