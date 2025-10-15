@@ -13,7 +13,66 @@ from datetime import datetime
 from dateutil import parser
 from urllib.parse import urlparse
 from functools import lru_cache
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List, Any
+
+# ============================================================
+# ===========  ORDEN CANÓNICO PARA EL MODELO  ===============
+# ============================================================
+# Debe coincidir 1:1 con el feature_order.json usado al entrenar
+FEATURES: List[str] = [
+    "url_length",
+    "num_dashes",
+    "num_digits",
+    "num_special_chars",
+    "path_segments",
+    "num_dots",
+    "hostname_length",
+    "path_length",
+    "query_length",
+    "num_underscores",
+    "num_dashes_in_hostname",
+    "title_length",
+    "http_status_code",
+    "has_https",
+    "has_ssl_cert",
+    "iframe_present",
+    "insecure_forms",
+    "submit_info_to_email",
+    "abnormal_form_action",
+    "double_slash_in_path",
+    "is_registered_in_ar",
+    "responds",
+]
+
+# Columnas numéricas del entrenamiento (para tu scaler).
+# OJO: El escalado NO se hace aquí (se hace afuera, en tu pipeline),
+# pero declaramos el set para que puedas verificar consistencia.
+NUMERIC_COLS: List[str] = [
+    "url_length",
+    "num_dashes",
+    "num_digits",
+    "num_special_chars",
+    "path_segments",
+    "num_dots",
+    "hostname_length",
+    "path_length",
+    "query_length",
+    "num_underscores",
+    "num_dashes_in_hostname",
+    "title_length",
+    "http_status_code",
+]
+BOOL_COLS: List[str] = [
+    "has_https",
+    "has_ssl_cert",
+    "iframe_present",
+    "insecure_forms",
+    "submit_info_to_email",
+    "abnormal_form_action",
+    "double_slash_in_path",
+    "is_registered_in_ar",
+    "responds",
+]
 
 # -------- Config de red --------
 DEFAULT_TIMEOUT = 6.0
@@ -36,6 +95,10 @@ def resolve_canonical_url(dominio: str) -> Tuple[Optional[str], int, bool, bool]
     Unifica 'apex' y 'www' para evitar divergencias de features.
     """
     d = (dominio or "").strip().lower()
+    # Si viene con esquema/path, extraer host
+    if d.startswith(("http://", "https://")):
+        parsed = urlparse(d)
+        d = (parsed.netloc or parsed.path or "").lower()
     if d.startswith("www."):
         d = d[4:]
 
@@ -69,16 +132,16 @@ def resolve_canonical_url(dominio: str) -> Tuple[Optional[str], int, bool, bool]
 # ============================================================
 # ===============  Features BASE (sin red)  ==================
 # ============================================================
-def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
+def procesar_dominio_basico(dominio: str) -> Dict[str, Any]:
     """
     Procesa información estática (sintaxis de URL) y WHOIS del dominio.
-    Ahora usa el host de la URL CANÓNICA (apex/www unificados) para evitar
+    Usa host de la URL canónica (apex/www unificados) para evitar
     diferencias entre 'dominio' y 'www.dominio' en features sintácticas.
     """
-    # 0) Resolver canónica (usa LRU cache, es barato)
+    # 0) Resolver canónica (usa LRU cache)
     final_url, _, _, _ = resolve_canonical_url(dominio)
 
-    # 1) Host “de verdad” para medir sintaxis
+    # 1) Host “real” para medir sintaxis
     if final_url:
         parsed_final = urlparse(final_url)
         host_for_stats = parsed_final.hostname or (dominio or "").strip().lower()
@@ -86,12 +149,13 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         # normalizar por si viene con www. o esquema
         d = (dominio or "").strip().lower()
         if d.startswith(("http://", "https://")):
-            d = urlparse(d).netloc or urlparse(d).path
+            d_parsed = urlparse(d)
+            d = d_parsed.netloc or d_parsed.path
         if d.startswith("www."):
             d = d[4:]
         host_for_stats = d
 
-    # 2) Construir una URL “falsa” solo para longitud/coherencia (sin www.)
+    # 2) Construir una URL “falsa” solo para longitudes/coherencia (sin www.)
     url = f"http://{host_for_stats}"
     parsed = urlparse(url)
     hostname = parsed.hostname or host_for_stats
@@ -106,19 +170,13 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
     num_dashes_in_hostname = hostname.count('-')
     hostname_length = len(hostname)
 
-    # En base no resolvemos path/query (0) para no mezclar con dinámicas
-    path = ""
-    query = ""
+    # En "base" no resolvemos path/query (0) => se pisarán con dinámicas
     path_segments = 0
     path_length = 0
     query_length = 0
     double_slash_in_path = 0.0
 
-    # --- TLD (sobre el host canónico) ---
-    ext = tldextract.extract(host_for_stats)
-    tld = ext.suffix
-
-    # --- WHOIS (igual que tu versión) ---
+    # --- WHOIS ---
     creation_date_iso = None
     expiration_date_iso = None
     registrar = None
@@ -140,11 +198,15 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
             expiration = expiration[0]
 
         if isinstance(creation, str):
-            try: creation = parser.parse(creation)
-            except Exception: creation = None
+            try:
+                creation = parser.parse(creation)
+            except Exception:
+                creation = None
         if isinstance(expiration, str):
-            try: expiration = parser.parse(expiration)
-            except Exception: expiration = None
+            try:
+                expiration = parser.parse(expiration)
+            except Exception:
+                expiration = None
 
         creation_date_iso = creation.isoformat() if creation else None
         expiration_date_iso = expiration.isoformat() if expiration else None
@@ -171,10 +233,11 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
 
     is_registered_in_ar = bool(country_registered and "argentina" in str(country_registered).lower())
 
+    # Placeholders de dinámicas (se pisan en enriquecer_dominio_scraping)
     return {
-        # Identificación (por si lo usás para debug)
+        # Identificación/debug
         "url": url,
-        "tld": tld,
+        "tld": tldextract.extract(host_for_stats).suffix,
 
         # Estructura URL/host — todas sobre el HOST CANÓNICO
         "url_length": float(url_length),
@@ -190,7 +253,7 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         "path_length": float(path_length),
         "query_length": float(query_length),
 
-        # WHOIS / temporalidad
+        # WHOIS / temporalidad (no las usa tu modelo, pero útiles para debug)
         "registration_time": float(registration_time) if registration_time is not None else None,
         "creation_date": creation_date_iso,
         "expiration_date": expiration_date_iso,
@@ -200,7 +263,7 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         "country_registered": country_registered,
         "is_registered_in_ar": 1.0 if is_registered_in_ar else 0.0,
 
-        # Placeholders que se pisan con dinámicas
+        # Dinámicas (placeholder)
         "title_length": 0.0,
         "http_status_code": 0.0,
         "has_https": 0.0,
@@ -212,12 +275,22 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         "responds": 0.0,
         "response_time": None,
         "sensitive_words_count": 0.0,
+        "redirected_url": None,
+        "title": "",
+        "meta_keywords": "",
+        "category": "otro",
+        "random_string": 0.0,
+        "embedded_brand_name": 0.0,
+        "https_in_hostname": 0.0,
+        "domain_in_subdomains": 0.0,
+        "domain_in_paths": 0.0,
     }
+
 
 # ============================================================
 # ===========  Features DINÁMICAS (con red)  =================
 # ============================================================
-def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
+def enriquecer_dominio_scraping(dominio: str) -> Dict[str, Any]:
     """
     Usa una URL canónica (apex/www unificados) para medir señales de red/HTML.
     Con esto, 'dominio' y 'www.dominio' producirán features consistentes.
@@ -266,14 +339,11 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
     path = parsed_final.path or ""
     query = parsed_final.query or ""
 
-    # --- Cálculo robusto de subdominios y presencia del dominio en el path ---
-    # Usamos el registrable final (no el input) y marcamos subdominio real distinto de "" y "www"
+    # --- Subdominios y dominio en path (sobre host final) ---
     final_ext = tldextract.extract(parsed_final.netloc or "")
-    final_reg = final_ext.registered_domain  # p.ej. "arca.gob.ar"
+    final_reg = final_ext.registered_domain  # p.ej. "bbva.com.ar"
     final_sub = final_ext.subdomain          # p.ej. "", "www", "mi"
     domain_in_subdomains = 1.0 if final_sub not in ("", None, "www") else 0.0
-
-    # Dominio "base" (label antes del TLD registrable), ej. "arca" en "arca.gob.ar"
     base_label = final_reg.split(".")[0] if final_reg else ""
     domain_in_paths = 1.0 if (base_label and base_label in path) else 0.0
 
@@ -287,7 +357,6 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
         iframe_present = bool(soup.find("iframe"))
         forms = soup.find_all("form")
 
-        # comparar contra el registrable del HOST FINAL (evita falsos con www/apex)
         base_reg = final_reg
         for form in forms:
             action = (form.get("action") or "").strip().lower()
@@ -364,8 +433,8 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
 
         # Contenido
         "title": titulo,
-        "title_length": longitud_titulo,
-        "meta_keywords": "",  # opcional
+        "title_length": float(len(titulo)),
+        "meta_keywords": "",     # opcional
         "category": categoria,
 
         # Indicadores engañosos
@@ -383,13 +452,12 @@ def enriquecer_dominio_scraping(dominio: str) -> Dict[str, float]:
         "double_slash_in_path": 1.0 if ("//" in path and not path.startswith("//")) else 0.0,
     }
 
+
 # ============================================================
-# =============  Clasificación temática simple  ==============
+# ==============  Clasificación temática simple  =============
 # ============================================================
 def clasificar_categoria(texto_o_dominio: str) -> str:
-    """
-    Clasifica en categorías amplias según palabras clave en título/dominio.
-    """
+    """Clasifica en categorías amplias según palabras clave en título/dominio."""
     d = (texto_o_dominio or "").lower()
 
     if any(x in d for x in ["news", "noticia", "diario", "prensa", "periodico", "press"]):
@@ -403,3 +471,44 @@ def clasificar_categoria(texto_o_dominio: str) -> str:
     if any(x in d for x in ["edu", "universidad", "facultad", "campus", "colegio", "escuela", "instituto"]):
         return "educacion"
     return "otro"
+
+
+# ============================================================
+# ==============  Merge + API para la app  ===================
+# ============================================================
+def _merge_features(base: Dict[str, Any], dyn: Dict[str, Any]) -> Dict[str, Any]:
+    """Combina features base y dinámicas, privilegiando las dinámicas."""
+    merged = dict(base)
+    merged.update({k: v for k, v in dyn.items() if v is not None})
+    # Asegurar presencia de todas las FEATURES del modelo
+    for k in FEATURES:
+        if k not in merged or merged[k] is None:
+            # Defaults conservadores
+            merged[k] = 0.0
+    # Tipos consistentes (bools como 0/1 float)
+    for k in BOOL_COLS:
+        merged[k] = float(1.0 if bool(merged.get(k, 0.0)) else 0.0)
+    # Numéricas como float
+    for k in NUMERIC_COLS:
+        merged[k] = float(merged.get(k, 0.0) or 0.0)
+    return merged
+
+
+def get_features(dominio: str) -> Dict[str, Any]:
+    """
+    Devuelve un diccionario con TODAS las features (incluye extras de debug)
+    y garantiza que las FEATURES del modelo están presentes y en tipos correctos.
+    """
+    base = procesar_dominio_basico(dominio)
+    dyn = enriquecer_dominio_scraping(dominio)
+    return _merge_features(base, dyn)
+
+
+def features_for_model(dominio: str, feature_order: Optional[List[str]] = None) -> List[float]:
+    """
+    Devuelve una lista de valores en el orden EXACTO que requiere el modelo.
+    Por defecto usa FEATURES (tu orden canónico de entrenamiento).
+    """
+    order = feature_order or FEATURES
+    feats = get_features(dominio)
+    return [float(feats.get(k, 0.0) or 0.0) for k in order]
