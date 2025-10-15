@@ -306,6 +306,21 @@ def predict_and_show(dominio: str):
     with st.spinner("Analizando…"):
         base_feats = procesar_dominio_basico(dominio)
         dyn_feats  = enriquecer_dominio_scraping(dominio)
+
+
+                # DEBUG: ver cómo se resolvió la canónica y flags críticos
+        try:
+            from features import resolve_canonical_url
+            final_url, status_dbg, https_dbg, responds_dbg = resolve_canonical_url(dominio)
+            st.code(
+                f"DEBUG\nInput: {dominio}\nCanonical: {final_url}\n"
+                f"status={status_dbg} https={https_dbg} responds={responds_dbg}",
+                language="text"
+            )
+        except Exception as e:
+            st.caption(f"DEBUG resolve_canonical_url error: {e}")
+
+    
         feats = {**(base_feats or {}), **(dyn_feats or {})}
 
         X = ensure_feature_vector(feats, feature_order)
