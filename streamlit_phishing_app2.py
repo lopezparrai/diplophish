@@ -278,28 +278,16 @@ def render_tacometro(prob: float):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # ======== Rangos categóricos de riesgo (texto + colores + consejos) ========
-def bucket_for(pct: float):
-    """
-    Devuelve (titulo, consejo, bg, fg, border) según el % de riesgo.
-    Colores suaves para no alarmar pero marcar diferencia.
-    """
-    if pct < 30:
-        return (
-            "RIESGO BAJO",
-            "No se detectaron señales claras de phishing. Podés navegar con normalidad.",
-            "#e8f7ef", "#0f5132", "#badbcc",   # verde suave
-        )
-    if pct < 70:
-        return (
-            "RIESGO MODERADO",
-            "Se observan varias señales. No ingreses información personal y verificá la legitimidad del sitio.",
-            "#fff7e6", "#7a4b0b", "#ffe5b4",   # naranja/ámbar suave
-        )
-    return (
-        "RIESGO ALTO",
-        "Probable fraude. No ingreses datos. Cerrá la pestaña y reportá el enlace a la entidad oficial.",
-        "#fdecea", "#842029", "#f5c2c7",     # rojo suave
-    )
+
+def bucket_for(p: float):
+    if p < 0.3:
+        return ("🟢 Sitio confiable", "No se observan señales relevantes. Navegá con precaución habitual.",
+                "#e8f7ef", "#0f5132", "#badbcc")
+    if p < 0.6:
+        return ("🟡 Revisá antes de continuar", "Verificá que sea el sitio oficial y evitá ingresar datos sensibles.",
+                "#fff7e6", "#7a4b0b", "#ffe5b4")
+    return ("🔴 Probable sitio fraudulento", "No ingreses datos, cerrá la pestaña y reportá el enlace a la entidad correspondiente.",
+            "#fdecea", "#842029", "#f5c2c7")
 
 # ===================== Cargar artefactos =====================
 try:
@@ -343,11 +331,13 @@ def predict_and_show(dominio: str):
         label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
         p_phishing = float(proba[0,1]) if (proba is not None and np.ndim(proba)==2 and proba.shape[1]>=2) else (1.0 if label==1 else 0.0)
 
-        # --- Presentación con rangos categóricos ---
+               # --- Presentación con rangos categóricos ---
         render_tacometro(p_phishing)
         
         pct = round(p_phishing * 100, 1)
-        title, advice, bg, fg, border = bucket_for(pct)
+        
+        # bucket_for espera p en [0,1]
+        title, advice, bg, fg, border = bucket_for(p_phishing)
         
         st.markdown(f"""
         <div style="
@@ -363,8 +353,9 @@ def predict_and_show(dominio: str):
           <div style="font-size:1.35rem; font-weight:900; letter-spacing:.2px;">{title}</div>
           <div style="font-size:1.05rem; margin-top:6px;">
             {advice}
+          </div>
+        </div>
         """, unsafe_allow_html=True)
-
 
 # ===================== Interfaz principal (con st.form para soportar ENTER) =====================
 with st.form("analyzer_form", clear_on_submit=False):
