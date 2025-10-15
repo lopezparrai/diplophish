@@ -277,6 +277,38 @@ def render_tacometro(prob: float):
     fig.layout.margin = go.layout.Margin(l=0, r=0, t=0, b=0)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+    # ======== Rangos categóricos de riesgo (texto + colores + consejos) ========
+def bucket_for(pct: float):
+    """
+    Devuelve (titulo, consejo, bg, fg, border) según el % de riesgo.
+    Colores suaves para no alarmar pero marcar diferencia.
+    """
+    if pct < 5:
+        return (
+            "Muy bajo riesgo",
+            "No se detectaron señales claras de phishing. Podés navegar con normalidad.",
+            "#e8f7ef", "#0f5132", "#badbcc",   # verde suave
+        )
+    if pct < 30:
+        return (
+            "Bajo riesgo",
+            "Hay algunas señales menores. Evitá ingresar datos sensibles si no estás 100% seguro.",
+            "#e7f3ff", "#0b3b7a", "#b6d4fe",   # azul suave
+        )
+    if pct < 70:
+        return (
+            "Riesgo moderado",
+            "Se observan varias señales. No ingreses información personal y verificá la legitimidad del sitio.",
+            "#fff7e6", "#7a4b0b", "#ffe5b4",   # naranja/ámbar suave
+        )
+    return (
+        "Alto riesgo",
+        "Probable fraude. No ingreses datos. Cerrá la pestaña y reportá el enlace a la entidad oficial.",
+        "#fdecea", "#842029", "#f5c2c7",     # rojo suave
+    )
+
+
+
 # ===================== Cargar artefactos =====================
 try:
     model = load_model(MODEL_PATH)
@@ -319,12 +351,33 @@ def predict_and_show(dominio: str):
         label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
         p_phishing = float(proba[0,1]) if (proba is not None and np.ndim(proba)==2 and proba.shape[1]>=2) else (1.0 if label==1 else 0.0)
 
-    # --- Presentación: tacómetro + resultado grande ---
-    render_tacometro(p_phishing)
-    if label == 1:
-        st.markdown('<div class="result-banner result-alert">PHISHING</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="result-banner result-ok">NO PHISHING</div>', unsafe_allow_html=True)
+        # --- Presentación con rangos categóricos ---
+        render_tacometro(p_phishing)
+        
+        pct = round(p_phishing * 100, 1)
+        title, advice, bg, fg, border = bucket_for(pct)
+        
+        st.markdown(f"""
+        <div style="
+          border-radius:16px;
+          padding:18px 22px;
+          text-align:center;
+          margin-top:12px;
+          background:{bg};
+          color:{fg};
+          border:1px solid {border};
+          box-shadow:0 8px 24px rgba(30,42,70,0.08), 0 2px 6px rgba(30,42,70,0.05);
+        ">
+          <div style="font-size:1.35rem; font-weight:900; letter-spacing:.2px;">{title}</div>
+          <div style="font-size:1.05rem; margin-top:6px;">
+            Probabilidad estimada: <strong>{pct}%</strong>
+          </div>
+          <div style="margin-top:10px; font-size:.96rem;">
+            {advice}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
 
 # ===================== Interfaz principal (con st.form para soportar ENTER) =====================
 with st.form("analyzer_form", clear_on_submit=False):
