@@ -72,36 +72,53 @@ def resolve_canonical_url(dominio: str) -> Tuple[Optional[str], int, bool, bool]
 def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
     """
     Procesa información estática (sintaxis de URL) y WHOIS del dominio.
-    No hace requests HTML (para eso está enriquecer_dominio_scraping).
+    Ahora usa el host de la URL CANÓNICA (apex/www unificados) para evitar
+    diferencias entre 'dominio' y 'www.dominio' en features sintácticas.
     """
-    # Normalizar a host
-    url = f"http://{dominio}"
-    parsed = urlparse(url)
-    hostname = parsed.hostname or dominio
+    # 0) Resolver canónica (usa LRU cache, es barato)
+    final_url, _, _, _ = resolve_canonical_url(dominio)
 
-    # --- Métricas sintácticas de la URL/host ---
+    # 1) Host “de verdad” para medir sintaxis
+    if final_url:
+        parsed_final = urlparse(final_url)
+        host_for_stats = parsed_final.hostname or (dominio or "").strip().lower()
+    else:
+        # normalizar por si viene con www. o esquema
+        d = (dominio or "").strip().lower()
+        if d.startswith(("http://", "https://")):
+            d = urlparse(d).netloc or urlparse(d).path
+        if d.startswith("www."):
+            d = d[4:]
+        host_for_stats = d
+
+    # 2) Construir una URL “falsa” solo para longitud/coherencia (sin www.)
+    url = f"http://{host_for_stats}"
+    parsed = urlparse(url)
+    hostname = parsed.hostname or host_for_stats
+
+    # --- Métricas sintácticas sobre el HOST CANÓNICO ---
     url_length = len(url)
-    num_dashes = dominio.count('-')
-    num_digits = sum(c.isdigit() for c in dominio)
-    num_special_chars = len(re.findall(r'[^\w\s:/.-]', dominio))
-    num_dots = dominio.count('.')
-    num_underscores = dominio.count('_')
+    num_dashes = host_for_stats.count('-')
+    num_digits = sum(c.isdigit() for c in host_for_stats)
+    num_special_chars = len(re.findall(r'[^\w\s:/.-]', host_for_stats))
+    num_dots = host_for_stats.count('.')
+    num_underscores = host_for_stats.count('_')
     num_dashes_in_hostname = hostname.count('-')
     hostname_length = len(hostname)
 
-    # Como no estamos resolviendo aquí, path/query vendrán vacíos
-    path = parsed.path or ""
-    query = parsed.query or ""
-    path_segments = len([p for p in path.strip('/').split('/') if p]) if path else 0
-    path_length = len(path)
-    query_length = len(query)
-    double_slash_in_path = bool(re.search(r"//", path)) if path else False
+    # En base no resolvemos path/query (0) para no mezclar con dinámicas
+    path = ""
+    query = ""
+    path_segments = 0
+    path_length = 0
+    query_length = 0
+    double_slash_in_path = 0.0
 
-    # --- TLD ---
-    ext = tldextract.extract(dominio)
+    # --- TLD (sobre el host canónico) ---
+    ext = tldextract.extract(host_for_stats)
     tld = ext.suffix
 
-    # --- WHOIS (con timeouts) ---
+    # --- WHOIS (igual que tu versión) ---
     creation_date_iso = None
     expiration_date_iso = None
     registrar = None
@@ -111,8 +128,8 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
     registration_time = None
 
     try:
-        socket.setdefaulttimeout(5)  # evitar bloqueos en WHOIS
-        info_whois = whois.whois(dominio)
+        socket.setdefaulttimeout(5)
+        info_whois = whois.whois(host_for_stats)
 
         creation = info_whois.creation_date
         expiration = info_whois.expiration_date
@@ -123,15 +140,11 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
             expiration = expiration[0]
 
         if isinstance(creation, str):
-            try:
-                creation = parser.parse(creation)
-            except Exception:
-                creation = None
+            try: creation = parser.parse(creation)
+            except Exception: creation = None
         if isinstance(expiration, str):
-            try:
-                expiration = parser.parse(expiration)
-            except Exception:
-                expiration = None
+            try: expiration = parser.parse(expiration)
+            except Exception: expiration = None
 
         creation_date_iso = creation.isoformat() if creation else None
         expiration_date_iso = expiration.isoformat() if expiration else None
@@ -144,7 +157,6 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
             registration_time = round((expiration - creation).days / 365, 2)
 
         registrar = getattr(info_whois, "registrar", None)
-        # Algunos whois devuelven dict-like
         try:
             country_registered = (
                 info_whois.get("country")
@@ -160,11 +172,11 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
     is_registered_in_ar = bool(country_registered and "argentina" in str(country_registered).lower())
 
     return {
-        # Identificación (pueden no estar en feature_order; no molesta)
+        # Identificación (por si lo usás para debug)
         "url": url,
         "tld": tld,
 
-        # Estructura URL/host
+        # Estructura URL/host — todas sobre el HOST CANÓNICO
         "url_length": float(url_length),
         "num_dashes": float(num_dashes),
         "num_digits": float(num_digits),
@@ -173,12 +185,12 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         "num_dots": float(num_dots),
         "num_underscores": float(num_underscores),
         "num_dashes_in_hostname": float(num_dashes_in_hostname),
-        "double_slash_in_path": 1.0 if double_slash_in_path else 0.0,
+        "double_slash_in_path": float(double_slash_in_path),
         "hostname_length": float(hostname_length),
         "path_length": float(path_length),
         "query_length": float(query_length),
 
-        # WHOIS y temporalidad (si tu scaler/modelo no los usa, no pasa nada)
+        # WHOIS / temporalidad
         "registration_time": float(registration_time) if registration_time is not None else None,
         "creation_date": creation_date_iso,
         "expiration_date": expiration_date_iso,
@@ -188,7 +200,7 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         "country_registered": country_registered,
         "is_registered_in_ar": 1.0 if is_registered_in_ar else 0.0,
 
-        # Placeholders que se pisan con scraping
+        # Placeholders que se pisan con dinámicas
         "title_length": 0.0,
         "http_status_code": 0.0,
         "has_https": 0.0,
@@ -201,7 +213,6 @@ def procesar_dominio_basico(dominio: str) -> Dict[str, float]:
         "response_time": None,
         "sensitive_words_count": 0.0,
     }
-
 
 # ============================================================
 # ===========  Features DINÁMICAS (con red)  =================
