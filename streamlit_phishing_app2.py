@@ -331,11 +331,13 @@ def predict_and_show(dominio: str):
         label = int(y_pred[0]) if hasattr(y_pred, "__iter__") else int(y_pred)
         p_phishing = float(proba[0,1]) if (proba is not None and np.ndim(proba)==2 and proba.shape[1]>=2) else (1.0 if label==1 else 0.0)
 
-        # --- Presentación con rangos categóricos ---
+               # --- Presentación con rangos categóricos ---
         render_tacometro(p_phishing)
         
         pct = round(p_phishing * 100, 1)
-        title, advice, bg, fg, border = bucket_for(pct)
+        
+        # bucket_for espera p en [0,1]
+        title, advice, bg, fg, border = bucket_for(p_phishing)
         
         st.markdown(f"""
         <div style="
@@ -350,9 +352,13 @@ def predict_and_show(dominio: str):
         ">
           <div style="font-size:1.35rem; font-weight:900; letter-spacing:.2px;">{title}</div>
           <div style="font-size:1.05rem; margin-top:6px;">
+            Probabilidad estimada: <strong>{pct}%</strong>
+          </div>
+          <div style="margin-top:10px; font-size:.96rem;">
             {advice}
+          </div>
+        </div>
         """, unsafe_allow_html=True)
-
 
 # ===================== Interfaz principal (con st.form para soportar ENTER) =====================
 with st.form("analyzer_form", clear_on_submit=False):
