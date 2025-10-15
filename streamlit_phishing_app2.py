@@ -340,6 +340,9 @@ def predict_and_show(dominio: str):
         if overlap_cols:
             idx_map = [scaler_cols.index(c) for c in overlap_cols]
             X.loc[:, overlap_cols] = scaled_array[:, idx_map]
+            
+        st.write("DEBUG FEATURES:", {c: float(X.at[0, c]) for c in X.columns if abs(float(X.at[0, c])) > 0})
+
 
         proba = model.predict_proba(X) if hasattr(model, "predict_proba") else None
         y_pred = model.predict(X)
