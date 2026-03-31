@@ -1,4 +1,4 @@
-# 🛡️ DiphoPhish — Detector de URLs de Phishing
+# 🛡️ DiploPhish — Detector de URLs de Phishing
 
 Proyecto de Mentoría desarrollado en el marco de la **Diplomatura en Ciencia de Datos, ML y sus Aplicaciones** (FAMAF – UNC).
 
