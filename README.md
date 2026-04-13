@@ -7,6 +7,12 @@ Proyecto de Mentoría desarrollado en el marco de la **Diplomatura en Ciencia de
 
 El objetivo fue construir un **pipeline completo de Machine Learning** para clasificar URLs como phishing o legítimas, con foco en dominios argentinos (`.ar`). El resultado final es una aplicación web interactiva construida con Streamlit que permite analizar cualquier URL en tiempo real.
 
+## 🌐 Demo en vivo
+
+La aplicación está operativa y disponible para probar en:
+
+👉 **[diplophishing.streamlit.app](https://diplophishing.streamlit.app/)**
+
 ---
 
 ## 📌 Descripción del problema
